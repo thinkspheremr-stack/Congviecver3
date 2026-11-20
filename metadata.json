@@ -1,0 +1,10 @@
+{
+  "name": "Remix Bản 3 - Quản Lý Công Việc \u0026 Tài Liệu Dự Án",
+  "description": "Ứng dụng chuyên nghiệp cho chuyên gia quản lý dự án: theo dõi công việc theo danh mục và tiến độ, scan và lưu trữ tài liệu trực tiếp vào Google Drive.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
