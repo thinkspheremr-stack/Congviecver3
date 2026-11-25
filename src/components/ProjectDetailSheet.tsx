@@ -47,6 +47,9 @@ import {
 } from '../types';
 import { 
   ensureProjectHierarchicalFolder,
+  ensureProjectRootFolder,
+  extractDriveFolderIdFromUrl,
+  buildDriveFolderUrl,
   uploadDocumentToDrive 
 } from '../services/driveService';
 import { 
@@ -225,8 +228,10 @@ interface ProjectDetailSheetProps {
   onNavigateToDocuments?: (projectId?: string, search?: string) => void;
   driveToken: string | null;
   driveRootFolderId: string | null;
+  masterDrivePath?: string;
   isDriveConnected: boolean;
   onGoogleSignIn: () => void;
+  onDriveRootFolderResolved?: (folder: { id: string; name: string; webViewLink?: string }) => void;
   onOpenScanModal?: (targetInfo?: { type: 'detail' | 'attached'; id: string; sectionId?: string }) => void;
   onOpenBackupModal?: () => void;
 }
@@ -243,8 +248,10 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
   onNavigateToDocuments,
   driveToken,
   driveRootFolderId,
+  masterDrivePath,
   isDriveConnected,
   onGoogleSignIn,
+  onDriveRootFolderResolved,
   onOpenScanModal,
   onOpenBackupModal
 }) => {
@@ -419,6 +426,7 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadTarget, setUploadTarget] = useState<{ type: 'detail' | 'attached'; id: string; sectionId?: string } | null>(null);
   const [uploadStatusText, setUploadStatusText] = useState('');
+  const [uploadErrorText, setUploadErrorText] = useState<string | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [copyLinkSuccess, setCopyLinkSuccess] = useState(false);
   const jsonFileInputRef = useRef<HTMLInputElement>(null);
@@ -465,6 +473,7 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
       itemTypes,
       name: name.trim() || project.name,
       driveFolderPath: driveFolderPath.trim(),
+      driveFolderId: extractDriveFolderIdFromUrl(driveFolderLink.trim()) || project.driveFolderId,
       driveFolderLink: driveFolderLink.trim() || undefined,
       holdReason: status === 'on_hold' ? holdReason.trim() : (project.holdReason || ''),
       manager: manager.trim() || project.manager,
@@ -1148,66 +1157,103 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
     const projectName = project.name || name || 'Dự án';
     const targetSection = attachedSections.find(s => s.id === uploadTarget.sectionId) || attachedSections[0];
     const subFolderType = uploadTarget.type === 'detail' ? 'Chi tiết' : (targetSection?.title || 'Tài liệu kèm theo');
-    
+
+    setUploadErrorText(null);
+
+    if (!isDriveConnected || !driveToken) {
+      setUploadErrorText(
+        `Chưa kết nối Google Drive! Vui lòng bấm "Kết nối Google Drive" để tải tệp "${file.name}" trực tiếp lên thư mục dự án.`
+      );
+      setUploadTarget(null);
+      return;
+    }
+
     let fullFilePath = `${projectYear}/${projectName}/${subFolderType}/${file.name}`;
-    let driveFileId = `local-${Date.now()}`;
+    let driveFileId = '';
     let driveFileLink = '';
 
-    if (isDriveConnected && driveToken && driveRootFolderId) {
-      try {
-        setIsUploading(true);
-        setUploadStatusText(`Đang tải lên Google Drive: ${fullFilePath}...`);
-        const { folder, pathString } = await ensureProjectHierarchicalFolder(
-          driveToken,
-          driveRootFolderId,
-          projectYear,
-          projectName,
-          subFolderType
-        );
-        const uploadedDoc = await uploadDocumentToDrive(
-          driveToken,
-          file,
-          file.name,
-          file.type,
-          folder.id
-        );
-        driveFileId = uploadedDoc.id;
-        driveFileLink = uploadedDoc.webViewLink;
-        fullFilePath = `${pathString}${file.name}`;
-        setUploadStatusText(`Đã lưu thành công vào Google Drive: ${fullFilePath}`);
-      } catch {
-        alert(`Không thể tải lên Google Drive. Tệp được ghi nhận đường dẫn: ${fullFilePath}`);
-      } finally {
-        setTimeout(() => {
-          setIsUploading(false);
-          setUploadStatusText('');
-        }, 1500);
-      }
-    } else {
+    try {
       setIsUploading(true);
-      setUploadStatusText(`Đã ghi nhận đường dẫn Drive: ${fullFilePath}`);
+      setUploadStatusText(`Đang tải lên Google Drive: ${file.name}...`);
+
+      // 1. Kiểm tra xem dự án đã được gắn link / ID thư mục Drive riêng chưa (ví dụ sau khi khôi phục sao lưu và dán link dự án cũ)
+      const existingProjectFolderId =
+        project.driveFolderId ||
+        extractDriveFolderIdFromUrl(driveFolderLink || project.driveFolderLink || '') ||
+        undefined;
+
+      // 2. Đảm bảo có thư mục mẹ nếu chưa có thư mục dự án riêng
+      let effectiveRootId = driveRootFolderId;
+      let effectiveRootName = masterDrivePath;
+      if (!existingProjectFolderId && !effectiveRootId) {
+        const rootFolder = await ensureProjectRootFolder(driveToken, masterDrivePath);
+        effectiveRootId = rootFolder.id;
+        effectiveRootName = rootFolder.name;
+        onDriveRootFolderResolved?.(rootFolder);
+      }
+
+      const { folder, projectFolder, pathString } = await ensureProjectHierarchicalFolder(
+        driveToken,
+        effectiveRootId || '',
+        projectYear,
+        projectName,
+        subFolderType,
+        {
+          existingProjectFolderId,
+          rootFolderName: effectiveRootName
+        }
+      );
+
+      const uploadedDoc = await uploadDocumentToDrive(
+        driveToken,
+        file,
+        file.name,
+        file.type || 'application/octet-stream',
+        folder.id
+      );
+
+      driveFileId = uploadedDoc.id;
+      driveFileLink = uploadedDoc.webViewLink;
+      fullFilePath = `${pathString}${uploadedDoc.name || file.name}`;
+      setUploadStatusText(`Đã lưu thành công lên Google Drive: ${fullFilePath}`);
+
+      // Tự động lưu lại driveFolderId & driveFolderLink của dự án nếu chưa có để lần sau đồng bộ chuẩn xác
+      if (projectFolder?.id && (!project.driveFolderId || !project.driveFolderLink)) {
+        const nextFolderLink = projectFolder.webViewLink || buildDriveFolderUrl(projectFolder.id);
+        setDriveFolderLink(nextFolderLink);
+        onSaveProject({
+          id: project.id,
+          driveFolderId: projectFolder.id,
+          driveFolderLink: nextFolderLink
+        });
+      }
+
+      if (uploadTarget.type === 'detail') {
+        handleUpdateDetailItem(uploadTarget.id, 'driveFileId', driveFileId);
+        handleUpdateDetailItem(uploadTarget.id, 'driveFileName', uploadedDoc.name || file.name);
+        handleUpdateDetailItem(uploadTarget.id, 'driveFileLink', driveFileLink);
+        handleUpdateDetailItem(uploadTarget.id, 'driveFilePath', fullFilePath);
+      } else {
+        const sId = uploadTarget.sectionId || attachedSections[0]?.id;
+        if (sId) {
+          handleUpdateAttachedDoc(sId, uploadTarget.id, 'driveFileId', driveFileId);
+          handleUpdateAttachedDoc(sId, uploadTarget.id, 'driveFileName', uploadedDoc.name || file.name);
+          handleUpdateAttachedDoc(sId, uploadTarget.id, 'driveFileLink', driveFileLink);
+          handleUpdateAttachedDoc(sId, uploadTarget.id, 'driveFilePath', fullFilePath);
+        }
+      }
+    } catch (err: any) {
+      const msg = err?.message || 'Lỗi không xác định khi tải lên Google Drive.';
+      setUploadErrorText(
+        `Không thể tải "${file.name}" lên Google Drive: ${msg} (Mẹo: Vào Tiến độ → Thư mục lưu trữ Google Drive để kiểm tra / dán lại link Thư mục mẹ hoặc Thư mục con dự án, hoặc bấm "Kết nối lại Google Drive").`
+      );
+    } finally {
       setTimeout(() => {
         setIsUploading(false);
         setUploadStatusText('');
-      }, 1200);
+      }, 1600);
+      setUploadTarget(null);
     }
-
-    if (uploadTarget.type === 'detail') {
-      handleUpdateDetailItem(uploadTarget.id, 'driveFileId', driveFileId);
-      handleUpdateDetailItem(uploadTarget.id, 'driveFileName', file.name);
-      handleUpdateDetailItem(uploadTarget.id, 'driveFileLink', driveFileLink);
-      handleUpdateDetailItem(uploadTarget.id, 'driveFilePath', fullFilePath);
-    } else {
-      const sId = uploadTarget.sectionId || attachedSections[0]?.id;
-      if (sId) {
-        handleUpdateAttachedDoc(sId, uploadTarget.id, 'driveFileId', driveFileId);
-        handleUpdateAttachedDoc(sId, uploadTarget.id, 'driveFileName', file.name);
-        handleUpdateAttachedDoc(sId, uploadTarget.id, 'driveFileLink', driveFileLink);
-        handleUpdateAttachedDoc(sId, uploadTarget.id, 'driveFilePath', fullFilePath);
-      }
-    }
-
-    setUploadTarget(null);
   };
 
   const getStatusLabel = (st: 'completed' | 'on_hold' | 'in_progress') => {
@@ -1536,6 +1582,31 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
         <div className="bg-emerald-950/90 border-b border-emerald-700 px-4 py-2 text-xs text-emerald-300 flex items-center justify-center gap-2 animate-pulse">
           <Upload className="w-3.5 h-3.5 animate-bounce" />
           <span>{uploadStatusText}</span>
+        </div>
+      )}
+
+      {uploadErrorText && (
+        <div className="bg-rose-950/90 border-b border-rose-700/70 px-4 py-2.5 text-xs text-rose-200 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>{uploadErrorText}</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={onGoogleSignIn}
+              className="px-2.5 py-1 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-semibold text-[11px] cursor-pointer"
+            >
+              Kết nối lại Google Drive
+            </button>
+            <button
+              type="button"
+              onClick={() => setUploadErrorText(null)}
+              className="px-2 py-1 rounded-lg bg-slate-900/70 hover:bg-slate-800 text-slate-300 text-[11px] cursor-pointer"
+            >
+              Đóng
+            </button>
+          </div>
         </div>
       )}
 

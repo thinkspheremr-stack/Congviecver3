@@ -28,8 +28,9 @@ if (typeof window !== 'undefined') {
 }
 
 const provider = new GoogleAuthProvider();
-// Request Google Drive scope
-provider.addScope('https://www.googleapis.com/auth/drive.file');
+// Request full Google Drive scope so the user can link, read, and upload into pre-existing Drive folders (e.g., restored backups or folders created earlier)
+provider.addScope('https://www.googleapis.com/auth/drive');
+provider.setCustomParameters({ prompt: 'consent select_account' });
 
 // In-memory access token cache (MANDATORY: Never in localStorage)
 let cachedAccessToken: string | null = null;

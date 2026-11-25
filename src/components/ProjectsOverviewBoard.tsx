@@ -30,11 +30,26 @@ interface ProjectsOverviewBoardProps {
   onDeleteProject: (projectId: string) => void;
   categories?: CategoryInfo[];
   masterDrivePath?: string;
+  driveRootFolderId?: string | null;
   driveFolderLink?: string;
+  driveToken?: string | null;
   isDriveConnected?: boolean;
   onGoogleSignIn?: () => void;
   onOpenScanModal?: (taskId?: string) => void;
   onDeleteDocument?: (doc: ScannedDocument) => void;
+  onUpdateRootDriveFolder?: (updates: {
+    name?: string;
+    folderId?: string | null;
+    folderLink?: string;
+  }) => void;
+  onUpdateProjectDriveFolder?: (
+    projectId: string,
+    updates: {
+      driveFolderId?: string;
+      driveFolderLink?: string;
+      driveFolderPath?: string;
+    }
+  ) => void;
   initialTab?: 'projects' | 'drive';
 }
 
@@ -49,11 +64,15 @@ export const ProjectsOverviewBoard: React.FC<ProjectsOverviewBoardProps> = ({
   onDeleteProject,
   categories = [],
   masterDrivePath = '01. QUẢN LÝ DỰ ÁN & HỒ SƠ CÔNG TRÌNH',
+  driveRootFolderId,
   driveFolderLink,
+  driveToken,
   isDriveConnected = false,
   onGoogleSignIn = () => {},
   onOpenScanModal = () => {},
   onDeleteDocument = () => {},
+  onUpdateRootDriveFolder,
+  onUpdateProjectDriveFolder,
   initialTab = 'projects'
 }) => {
   const [activeTab, setActiveTab] = useState<'projects' | 'drive'>(initialTab);
@@ -153,14 +172,20 @@ export const ProjectsOverviewBoard: React.FC<ProjectsOverviewBoardProps> = ({
 
       {activeTab === 'drive' ? (
         <DriveFolderExplorer
+          projects={projects}
           tasks={tasks}
           categories={categories}
           driveFolderName={masterDrivePath}
+          driveFolderId={driveRootFolderId}
           driveFolderLink={driveFolderLink}
+          driveToken={driveToken}
           isDriveConnected={isDriveConnected}
           onGoogleSignIn={onGoogleSignIn}
           onOpenScanModal={onOpenScanModal}
           onDeleteDocument={onDeleteDocument}
+          onUpdateRootDriveFolder={onUpdateRootDriveFolder}
+          onUpdateProjectDriveFolder={onUpdateProjectDriveFolder}
+          onNavigateToProjectDetails={onNavigateToProjectDetails}
         />
       ) : (
         <>

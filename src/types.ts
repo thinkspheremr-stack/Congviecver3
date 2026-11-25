@@ -207,6 +207,8 @@ export interface DocumentAttachment {
   id: string;
   fileName: string;
   fileLink?: string;
+  driveFileId?: string;
+  driveFolderPath?: string;
   fileSize?: number;
   mimeType?: string;
   versionName?: string;     // VD: 'Lần 1 (Gốc)', 'Lần 2 (Sửa đổi)', 'Bản duyệt chính thức', 'Phụ lục bổ sung'

@@ -12,6 +12,8 @@ export interface FullBackupPayload {
   tasks: TaskItem[];
   categories?: CategoryInfo[];
   masterDrivePath?: string;
+  driveRootFolderId?: string;
+  driveRootFolderLink?: string;
   activeProjectId?: string;
   standaloneDocs?: ManagedDocument[];
   documentTypes?: ManagedDocTypeInfo[];
@@ -30,7 +32,9 @@ export function generateBackupPayload(
   companyName: string,
   standaloneDocs?: ManagedDocument[],
   documentTypes?: ManagedDocTypeInfo[],
-  departments?: ManagedDepartmentInfo[]
+  departments?: ManagedDepartmentInfo[],
+  driveRootFolderId?: string | null,
+  driveRootFolderLink?: string
 ): FullBackupPayload {
   const now = new Date();
   const backupTimeFormatted = now.toLocaleDateString('vi-VN', {
@@ -54,6 +58,8 @@ export function generateBackupPayload(
     tasks,
     categories,
     masterDrivePath,
+    driveRootFolderId: driveRootFolderId || undefined,
+    driveRootFolderLink: driveRootFolderLink || undefined,
     activeProjectId,
     standaloneDocs,
     documentTypes,

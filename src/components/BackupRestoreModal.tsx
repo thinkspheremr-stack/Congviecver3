@@ -36,10 +36,13 @@ interface BackupRestoreModalProps {
   isDriveConnected?: boolean;
   driveToken?: string | null;
   driveRootFolderId?: string | null;
+  driveRootFolderLink?: string;
   onRestoreAll: (restoredData: {
     projects: Project[];
     tasks: TaskItem[];
     masterDrivePath?: string;
+    driveRootFolderId?: string;
+    driveRootFolderLink?: string;
     activeProjectId?: string;
     standaloneDocs?: ManagedDocument[];
     documentTypes?: ManagedDocTypeInfo[];
@@ -62,6 +65,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
   isDriveConnected,
   driveToken,
   driveRootFolderId,
+  driveRootFolderLink,
   onRestoreAll
 }) => {
   const [lastBackupTime, setLastBackupTime] = useState<string>(() => {
@@ -92,7 +96,9 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
         companyName,
         standaloneDocs,
         documentTypes,
-        departments
+        departments,
+        driveRootFolderId,
+        driveRootFolderLink
       );
       downloadBackupFile(payload);
       setLastBackupTime(payload.backupTimeFormatted);
@@ -123,7 +129,9 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
         companyName,
         standaloneDocs,
         documentTypes,
-        departments
+        departments,
+        driveRootFolderId,
+        driveRootFolderLink
       );
       const jsonStr = JSON.stringify(payload, null, 2);
       const now = new Date();
@@ -203,6 +211,8 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
         projects: finalProjects,
         tasks: finalTasks,
         masterDrivePath: previewPayload.masterDrivePath,
+        driveRootFolderId: previewPayload.driveRootFolderId,
+        driveRootFolderLink: previewPayload.driveRootFolderLink,
         activeProjectId: previewPayload.activeProjectId || finalProjects[0]?.id,
         standaloneDocs: previewPayload.standaloneDocs,
         documentTypes: previewPayload.documentTypes,

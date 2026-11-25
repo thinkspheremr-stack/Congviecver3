@@ -353,6 +353,7 @@ export const App: React.FC = () => {
               driveFileName: updatedDoc.driveFileName !== undefined ? updatedDoc.driveFileName : it.driveFileName,
               driveFileLink: updatedDoc.driveFileLink !== undefined ? updatedDoc.driveFileLink : it.driveFileLink,
               driveFileId: updatedDoc.driveFileId !== undefined ? updatedDoc.driveFileId : it.driveFileId,
+              driveFilePath: updatedDoc.driveFilePath !== undefined ? updatedDoc.driveFilePath : it.driveFilePath,
             };
           }
           return it;
@@ -390,6 +391,7 @@ export const App: React.FC = () => {
                 driveFileName: updatedDoc.driveFileName !== undefined ? updatedDoc.driveFileName : it.driveFileName,
                 driveFileLink: updatedDoc.driveFileLink !== undefined ? updatedDoc.driveFileLink : it.driveFileLink,
                 driveFileId: updatedDoc.driveFileId !== undefined ? updatedDoc.driveFileId : it.driveFileId,
+                driveFilePath: updatedDoc.driveFilePath !== undefined ? updatedDoc.driveFilePath : it.driveFilePath,
               };
             }
             return it;
@@ -1052,11 +1054,65 @@ export const App: React.FC = () => {
     }
   };
 
+  // Cập nhật Thư mục mẹ (Hồ sơ gốc Google Drive) khi người dùng dán link hoặc đổi tên
+  const handleUpdateRootDriveFolder = (updates: {
+    name?: string;
+    folderId?: string | null;
+    folderLink?: string;
+  }) => {
+    if (updates.name !== undefined) {
+      const cleaned = updates.name.replace(/^\/+|\/+$/g, '').trim() || '01. QUẢN LÝ DỰ ÁN & HỒ SƠ CÔNG TRÌNH';
+      setLocalMasterDrivePath(cleaned);
+      setMasterDrivePath(cleaned);
+    }
+    if (updates.folderId !== undefined) {
+      setDriveRootFolderId(updates.folderId);
+      if (updates.folderId) {
+        localStorage.setItem('pm_drive_root_folder_id', updates.folderId);
+      } else {
+        localStorage.removeItem('pm_drive_root_folder_id');
+      }
+    }
+    if (updates.folderLink !== undefined) {
+      setDriveRootFolderLink(updates.folderLink);
+      if (updates.folderLink) {
+        localStorage.setItem('pm_drive_root_folder_link', updates.folderLink);
+      } else {
+        localStorage.removeItem('pm_drive_root_folder_link');
+      }
+    }
+  };
+
+  // Cập nhật link / ID Thư mục con Google Drive cho từng dự án
+  const handleUpdateProjectDriveFolder = (
+    projId: string,
+    updates: {
+      driveFolderId?: string;
+      driveFolderLink?: string;
+      driveFolderPath?: string;
+    }
+  ) => {
+    setProjects(prev =>
+      prev.map(p =>
+        p.id === projId
+          ? {
+              ...p,
+              driveFolderId: updates.driveFolderId,
+              driveFolderLink: updates.driveFolderLink,
+              driveFolderPath: updates.driveFolderPath !== undefined ? updates.driveFolderPath : p.driveFolderPath
+            }
+          : p
+      )
+    );
+  };
+
   // Xử lý Khôi phục Toàn bộ Dữ liệu từ Backup File (.json)
   const handleRestoreAllData = (restored: {
     projects: Project[];
     tasks: TaskItem[];
     masterDrivePath?: string;
+    driveRootFolderId?: string;
+    driveRootFolderLink?: string;
     activeProjectId?: string;
     standaloneDocs?: ManagedDocument[];
     documentTypes?: ManagedDocTypeInfo[];
@@ -1075,7 +1131,18 @@ export const App: React.FC = () => {
       setDepartments(restored.departments);
       setStoredManagedDepartments(restored.departments);
     }
-    if (restored.masterDrivePath) setLocalMasterDrivePath(restored.masterDrivePath);
+    if (restored.masterDrivePath) {
+      const cleanedPath = restored.masterDrivePath.replace(/^\/+|\/+$/g, '').trim() || restored.masterDrivePath;
+      setLocalMasterDrivePath(cleanedPath);
+    }
+    if (restored.driveRootFolderId) {
+      setDriveRootFolderId(restored.driveRootFolderId);
+      localStorage.setItem('pm_drive_root_folder_id', restored.driveRootFolderId);
+    }
+    if (restored.driveRootFolderLink) {
+      setDriveRootFolderLink(restored.driveRootFolderLink);
+      localStorage.setItem('pm_drive_root_folder_link', restored.driveRootFolderLink);
+    }
     if (restored.activeProjectId && restored.projects.some(p => p.id === restored.activeProjectId)) {
       setActiveProjectId(restored.activeProjectId);
     } else if (restored.projects[0]) {
@@ -1165,8 +1232,16 @@ export const App: React.FC = () => {
             onNavigateToDocuments={handleNavigateToDocuments}
             driveToken={driveToken}
             driveRootFolderId={driveRootFolderId}
+            masterDrivePath={masterDrivePath}
             isDriveConnected={!!driveToken}
             onGoogleSignIn={handleGoogleSignIn}
+            onDriveRootFolderResolved={(folder) =>
+              handleUpdateRootDriveFolder({
+                folderId: folder.id,
+                name: folder.name,
+                folderLink: folder.webViewLink || ''
+              })
+            }
             onOpenScanModal={() => {
               setScanTargetTaskId(undefined);
               setIsScanModalOpen(true);
@@ -1217,9 +1292,13 @@ export const App: React.FC = () => {
             tasks={tasks}
             categories={categories}
             masterDrivePath={masterDrivePath}
+            driveRootFolderId={driveRootFolderId}
             driveFolderLink={driveRootFolderLink}
+            driveToken={driveToken}
             isDriveConnected={!!driveToken}
             onGoogleSignIn={handleGoogleSignIn}
+            onUpdateRootDriveFolder={handleUpdateRootDriveFolder}
+            onUpdateProjectDriveFolder={handleUpdateProjectDriveFolder}
             onOpenScanModal={(taskId) => {
               setScanTargetTaskId(taskId);
               setIsScanModalOpen(true);
@@ -1275,6 +1354,10 @@ export const App: React.FC = () => {
               setIsScanModalOpen(true);
             }}
             isDriveConnected={!!driveToken}
+            driveToken={driveToken}
+            driveRootFolderId={driveRootFolderId}
+            masterDrivePath={masterDrivePath}
+            onGoogleSignIn={handleGoogleSignIn}
           />
         )}
       </main>
@@ -1375,6 +1458,7 @@ export const App: React.FC = () => {
         isDriveConnected={!!driveToken}
         driveToken={driveToken}
         driveRootFolderId={driveRootFolderId}
+        driveRootFolderLink={driveRootFolderLink}
         onRestoreAll={handleRestoreAllData}
       />
 

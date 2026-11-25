@@ -28,7 +28,11 @@ import {
   PlusCircle,
   ChevronRight,
   Calendar,
-  ArrowUpRight
+  ArrowUpRight,
+  Lock,
+  Loader2,
+  FolderOpen,
+  Cloud
 } from 'lucide-react';
 import { Project, TaskItem, ManagedDocument, ManagedDocType, ManagedDocTypeInfo, ManagedDepartmentInfo, DocumentAttachment } from '../types';
 import { DocTypeManagementModal } from './DocTypeManagementModal';
@@ -40,6 +44,11 @@ import {
   getStoredManagedDepartments,
   DEFAULT_MANAGED_DEPARTMENTS
 } from '../services/taskStorage';
+import {
+  ensureProjectRootFolder,
+  ensureDepartmentFolderInRoot,
+  uploadDocumentToDrive
+} from '../services/driveService';
 
 /**
  * Helper: Trả về danh sách tất cả file đính kèm / các lần sửa đổi của một văn bản
@@ -55,6 +64,8 @@ export const getDocAttachments = (doc: ManagedDocument): DocumentAttachment[] =>
         id: `${doc.id}-att-1`,
         fileName: doc.driveFileName || 'Tệp đính kèm',
         fileLink: doc.driveFileLink,
+        driveFileId: doc.driveFileId,
+        driveFolderPath: doc.driveFilePath,
         fileSize: doc.fileSize,
         mimeType: doc.mimeType,
         versionName: 'Lần 1 (Gốc)',
@@ -150,6 +161,10 @@ interface DocumentManagementBoardProps {
   onNavigateToProjectDetails?: (projectId: string) => void;
   onOpenScanModal?: () => void;
   isDriveConnected?: boolean;
+  driveToken?: string | null;
+  driveRootFolderId?: string | null;
+  masterDrivePath?: string;
+  onGoogleSignIn?: () => void;
 }
 
 export const COMMON_DEPARTMENTS = [
@@ -188,7 +203,11 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
   onReorderDepartments,
   onNavigateToProjectDetails,
   onOpenScanModal,
-  isDriveConnected
+  isDriveConnected,
+  driveToken,
+  driveRootFolderId,
+  masterDrivePath,
+  onGoogleSignIn
 }) => {
   // Document Types State (sử dụng prop từ App hoặc fallback LocalStorage)
   const [localDocTypes, setLocalDocTypes] = useState<ManagedDocTypeInfo[]>(() => getStoredManagedDocTypes());
@@ -359,11 +378,13 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
           p.code.trim().toLowerCase() === target
       );
       if (exact) return exact;
-      const partial = projects.find(p => {
-        const pName = p.name.trim().toLowerCase();
-        return (pName.length >= 6 && target.includes(pName)) || (target.length >= 6 && pName.includes(target));
-      });
-      if (partial) return partial;
+      if (doc.source !== 'standalone') {
+        const partial = projects.find(p => {
+          const pName = p.name.trim().toLowerCase();
+          return (pName.length >= 6 && target.includes(pName)) || (target.length >= 6 && pName.includes(target));
+        });
+        if (partial) return partial;
+      }
     }
     return undefined;
   };
@@ -401,6 +422,8 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
   const [department, setDepartment] = useState('Ban Quản lý Dự án');
   const [customDepartment, setCustomDepartment] = useState('');
   const [projectId, setProjectId] = useState('');
+  const [customProjectName, setCustomProjectName] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
   const [issueDay, setIssueDay] = useState(new Date().getDate().toString().padStart(2, '0'));
   const [issueMonth, setIssueMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
   const [issueYear, setIssueYear] = useState(new Date().getFullYear().toString());
@@ -412,6 +435,13 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
   const [modalAttachments, setModalAttachments] = useState<DocumentAttachment[]>([]);
   const modalFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Trạng thái tải tệp lên Google Drive trong Modal chính
+  const [isUploadingDrive, setIsUploadingDrive] = useState(false);
+  const [driveUploadStatus, setDriveUploadStatus] = useState<string | null>(null);
+  const [driveUploadError, setDriveUploadError] = useState<string | null>(null);
+  const [uploadedDriveFolderLink, setUploadedDriveFolderLink] = useState<string | null>(null);
+  const [uploadedDriveFolderPath, setUploadedDriveFolderPath] = useState<string | null>(null);
+
   // Quick Attachment Modal (Thêm nhanh lần sửa đổi / đính kèm trực tiếp trên từng dòng)
   const [quickAttachDoc, setQuickAttachDoc] = useState<ManagedDocument | null>(null);
   const [quickDocNumber, setQuickDocNumber] = useState('');
@@ -422,9 +452,54 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
   const [quickFileName, setQuickFileName] = useState('');
   const [quickFileLink, setQuickFileLink] = useState('');
   const [quickFileSize, setQuickFileSize] = useState<number | undefined>(undefined);
+  const [quickDriveFileId, setQuickDriveFileId] = useState<string | undefined>(undefined);
+  const [quickDriveFolderPath, setQuickDriveFolderPath] = useState<string | undefined>(undefined);
+  const [quickDriveFolderLink, setQuickDriveFolderLink] = useState<string | null>(null);
   const [quickNote, setQuickNote] = useState('');
   const [quickIsPrimary, setQuickIsPrimary] = useState(true);
+  const [isQuickUploadingDrive, setIsQuickUploadingDrive] = useState(false);
+  const [quickUploadStatus, setQuickUploadStatus] = useState<string | null>(null);
+  const [quickUploadError, setQuickUploadError] = useState<string | null>(null);
   const quickFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Tài liệu đồng bộ từ Dự án (Chi tiết dự án / Tài liệu kèm theo) sẽ khóa trường Dự án để bảo vệ liên kết về dự án mẹ
+  const isProjectLocked = !!(editingDoc && (editingDoc.source === 'project_detail' || editingDoc.source === 'attached_doc'));
+  const currentResolvedDepartment = (department === 'Khác' ? customDepartment.trim() : department.trim()) || 'Văn bản chung';
+  const rootDriveLabel = (masterDrivePath && masterDrivePath.trim()) || 'Hồ sơ gốc';
+
+  // Helper dùng chung: Tự động tạo / tìm thư mục theo Bộ phận / Đơn vị trong Hồ sơ gốc và upload file thực tế lên Google Drive
+  const uploadFileToDepartmentDrive = async (file: File, targetDepartmentName: string) => {
+    if (!driveToken) {
+      throw new Error('NOT_CONNECTED');
+    }
+
+    let rootId = driveRootFolderId;
+    if (!rootId) {
+      const rootFolder = await ensureProjectRootFolder(driveToken, masterDrivePath);
+      rootId = rootFolder.id;
+    }
+
+    const cleanDept = (targetDepartmentName || 'Văn bản chung').trim() || 'Văn bản chung';
+    const { folder: deptFolder, pathString } = await ensureDepartmentFolderInRoot(
+      driveToken,
+      rootId,
+      cleanDept
+    );
+
+    const uploaded = await uploadDocumentToDrive(
+      driveToken,
+      file,
+      file.name,
+      file.type || 'application/octet-stream',
+      deptFolder.id
+    );
+
+    return {
+      uploaded,
+      deptFolder,
+      folderPath: `${rootDriveLabel}/${pathString}`
+    };
+  };
 
   // 1. TỔNG HỢP TÀI LIỆU (Chỉ gồm văn bản tự thêm và các mục đã khai báo Loại văn bản hoặc Phòng ban)
   const allDocuments = useMemo<ManagedDocument[]>(() => {
@@ -618,16 +693,51 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
     setQuickFileName('');
     setQuickFileLink('');
     setQuickFileSize(undefined);
+    setQuickDriveFileId(undefined);
+    setQuickDriveFolderPath(undefined);
+    setQuickDriveFolderLink(null);
     setQuickNote('');
     setQuickIsPrimary(true);
+    setQuickUploadStatus(null);
+    setQuickUploadError(null);
   };
 
-  const handleQuickFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleQuickFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setQuickFileName(file.name);
+    if (!file || !quickAttachDoc) return;
+
+    setQuickUploadError(null);
+    setQuickUploadStatus(null);
+
+    if (!driveToken) {
+      setQuickUploadError(
+        `Chưa kết nối Google Drive! Vui lòng bấm "Kết nối Google Drive" để hệ thống tự tạo thư mục "${quickAttachDoc.department || 'Văn bản chung'}" trong Hồ sơ gốc và tải tệp "${file.name}" lên để mở xem trực tiếp.`
+      );
+      if (quickFileInputRef.current) quickFileInputRef.current.value = '';
+      return;
+    }
+
+    setIsQuickUploadingDrive(true);
+    try {
+      const targetDept = quickAttachDoc.department || 'Văn bản chung';
+      const { uploaded, deptFolder, folderPath } = await uploadFileToDepartmentDrive(file, targetDept);
+      setQuickFileName(uploaded.name || file.name);
+      setQuickFileLink(uploaded.webViewLink);
       setQuickFileSize(file.size);
-      setQuickFileLink(`https://drive.google.com/search?q=${encodeURIComponent(file.name)}`);
+      setQuickDriveFileId(uploaded.id);
+      setQuickDriveFolderPath(folderPath);
+      setQuickDriveFolderLink(deptFolder.webViewLink || null);
+      setQuickUploadStatus(`Đã lưu thực tế lên Google Drive → ${folderPath}${uploaded.name}`);
+    } catch (err: any) {
+      const msg = err?.message || 'Lỗi không xác định';
+      setQuickUploadError(
+        msg.includes('401')
+          ? 'Phiên đăng nhập Google Drive đã hết hạn. Vui lòng bấm "Kết nối Google Drive" lại để tải tệp.'
+          : `Không thể tải tệp lên Google Drive: ${msg}`
+      );
+    } finally {
+      setIsQuickUploadingDrive(false);
+      if (quickFileInputRef.current) quickFileInputRef.current.value = '';
     }
   };
 
@@ -635,7 +745,7 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
     e.preventDefault();
     if (!quickAttachDoc) return;
     if (!quickTitle.trim()) {
-      alert('Vui lòng nhập trích yếu hoặc tên văn bản / tài liệu!');
+      setQuickUploadError('Vui lòng nhập trích yếu hoặc tên văn bản / tài liệu!');
       return;
     }
 
@@ -648,6 +758,8 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
         id: `att-${Date.now()}-${existing.length + 1}`,
         fileName: quickFileName.trim() || 'Tệp đính kèm mới',
         fileLink: quickFileLink.trim() || undefined,
+        driveFileId: quickDriveFileId,
+        driveFolderPath: quickDriveFolderPath,
         fileSize: quickFileSize,
         versionName: quickVersionName.trim() || `Lần ${existing.length + 1}`,
         uploadedAt: dateIso,
@@ -660,7 +772,7 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
         : [...existing, newAtt];
     }
 
-    const latestAtt = updatedAtts[updatedAtts.length - 1];
+    const latestAtt = updatedAtts.find(a => a.isPrimary) || updatedAtts[updatedAtts.length - 1];
 
     const updatedDoc: ManagedDocument = {
       ...quickAttachDoc,
@@ -670,8 +782,10 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
       title: quickTitle.trim() || quickAttachDoc.title,
       docType: (quickDocType || '') as ManagedDocType,
       attachments: updatedAtts,
+      driveFileId: quickDriveFileId || latestAtt?.driveFileId || quickAttachDoc.driveFileId,
       driveFileName: quickFileName.trim() || latestAtt?.fileName || quickAttachDoc.driveFileName,
       driveFileLink: quickFileLink.trim() || latestAtt?.fileLink || quickAttachDoc.driveFileLink,
+      driveFilePath: quickDriveFolderPath || latestAtt?.driveFolderPath || quickAttachDoc.driveFilePath,
       fileSize: quickFileSize || latestAtt?.fileSize || quickAttachDoc.fileSize,
       uploadedAt: dateIso
     };
@@ -692,8 +806,10 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
       source: quickAttachDoc.source || 'standalone',
       sourceId: quickAttachDoc.sourceId,
       attachments: updatedAtts,
+      driveFileId: latest?.driveFileId,
       driveFileName: latest?.fileName || undefined,
       driveFileLink: latest?.fileLink || undefined,
+      driveFilePath: latest?.driveFolderPath,
       fileSize: latest?.fileSize,
       uploadedAt: latest?.uploadedAt || new Date().toISOString()
     };
@@ -706,12 +822,18 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
   const handleOpenAddModal = () => {
     setEditingDoc(null);
     setUnlinkedProjectNotice(null);
+    setFormError(null);
+    setDriveUploadStatus(null);
+    setDriveUploadError(null);
+    setUploadedDriveFolderLink(null);
+    setUploadedDriveFolderPath(null);
     setDocNumber('');
     setTitle('');
     setDocType('to_trinh');
     setDepartment(activeDepartmentNames[1] || activeDepartmentNames[0] || 'Ban Quản lý Dự án');
     setCustomDepartment('');
-    setProjectId(projects[0]?.id || '');
+    setProjectId('');
+    setCustomProjectName('');
     setIssueDay(new Date().getDate().toString().padStart(2, '0'));
     setIssueMonth((new Date().getMonth() + 1).toString().padStart(2, '0'));
     setIssueYear(new Date().getFullYear().toString());
@@ -734,9 +856,14 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
 
   const handleOpenEditModal = (doc: ManagedDocument, showUnlinkedNotice: boolean = false) => {
     setEditingDoc(doc);
+    setFormError(null);
+    setDriveUploadStatus(null);
+    setDriveUploadError(null);
+    setUploadedDriveFolderLink(null);
+    setUploadedDriveFolderPath(doc.driveFilePath || null);
     setUnlinkedProjectNotice(
       showUnlinkedNotice && doc.projectName
-        ? `Văn bản đang ghi tên dự án "${doc.projectName}" nhưng chưa liên kết với dự án nào trong danh sách. Hãy chọn dự án tương ứng bên dưới rồi lưu để có thể kích mở trực tiếp.`
+        ? `Văn bản đang ghi tên dự án "${doc.projectName}" nhưng chưa liên kết với dự án nào trong danh sách. Bạn có thể chọn dự án trong danh sách hoặc giữ/sửa tên dự án tự ghi bên dưới.`
         : null
     );
     setDocNumber(doc.docNumber || '');
@@ -745,12 +872,30 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
     if (activeDepartmentNames.includes(doc.department)) {
       setDepartment(doc.department);
       setCustomDepartment('');
-    } else {
+    } else if (doc.department) {
       setDepartment('Khác');
       setCustomDepartment(doc.department);
+    } else {
+      setDepartment(activeDepartmentNames[1] || activeDepartmentNames[0] || 'Ban Quản lý Dự án');
+      setCustomDepartment('');
     }
+
+    const isSyncedFromProject = doc.source === 'project_detail' || doc.source === 'attached_doc';
     const matchedProj = resolveDocumentProject(doc);
-    setProjectId(doc.projectId || matchedProj?.id || '');
+    if (isSyncedFromProject) {
+      setProjectId(doc.projectId || matchedProj?.id || '');
+      setCustomProjectName('');
+    } else if (matchedProj) {
+      setProjectId(matchedProj.id);
+      setCustomProjectName('');
+    } else if (doc.projectName && doc.projectName.trim()) {
+      setProjectId('');
+      setCustomProjectName(doc.projectName.trim());
+    } else {
+      setProjectId('');
+      setCustomProjectName('');
+    }
+
     setIssueDay(doc.issueDay || (doc.issueDate ? doc.issueDate.split('-')[2] : '01'));
     setIssueMonth(doc.issueMonth || (doc.issueDate ? doc.issueDate.split('-')[1] : '01'));
     setIssueYear(doc.issueYear || (doc.issueDate ? doc.issueDate.split('-')[0] : '2026'));
@@ -808,23 +953,67 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
     setModalAttachments(prev => prev.filter(a => a.id !== id));
   };
 
-  // Xử lý tải file từ máy tính trong Modal chính
-  const handleModalUploadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Xử lý tải file thực tế từ máy tính lên Google Drive (tự tạo thư mục theo Bộ phận/Đơn vị trong Hồ sơ gốc)
+  const handleModalUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setModalAttachments(prev => [
-        ...prev,
-        {
-          id: `att-${Date.now()}-${prev.length + 1}`,
-          versionName: `Lần ${prev.length + 1} (Chỉnh sửa)`,
-          fileName: file.name,
-          fileLink: `https://drive.google.com/search?q=${encodeURIComponent(file.name)}`,
+    if (!file) return;
+
+    setDriveUploadError(null);
+    setDriveUploadStatus(null);
+
+    if (!driveToken) {
+      setDriveUploadError(
+        `Chưa kết nối Google Drive! Vui lòng bấm "Kết nối Google Drive" để hệ thống tự tạo thư mục "${currentResolvedDepartment}" trong Hồ sơ gốc (${rootDriveLabel}) và lưu tệp "${file.name}" lên Drive.`
+      );
+      if (modalFileInputRef.current) modalFileInputRef.current.value = '';
+      return;
+    }
+
+    setIsUploadingDrive(true);
+    try {
+      const { uploaded, deptFolder, folderPath } = await uploadFileToDepartmentDrive(
+        file,
+        currentResolvedDepartment
+      );
+
+      setModalAttachments(prev => {
+        const hasSingleEmptyPlaceholder =
+          prev.length === 1 && !prev[0].fileName.trim() && !(prev[0].fileLink || '').trim();
+
+        const newAttachment: DocumentAttachment = {
+          id: hasSingleEmptyPlaceholder ? prev[0].id : `att-${Date.now()}-${prev.length + 1}`,
+          versionName: hasSingleEmptyPlaceholder
+            ? (prev[0].versionName || 'Lần 1 (Gốc)')
+            : `Lần ${prev.length + 1} (Chỉnh sửa)`,
+          fileName: uploaded.name || file.name,
+          fileLink: uploaded.webViewLink,
+          driveFileId: uploaded.id,
+          driveFolderPath: folderPath,
           fileSize: file.size,
+          mimeType: uploaded.mimeType || file.type,
           uploadedAt: `${getTodayDateString()}T00:00:00.000Z`,
-          note: '',
+          note: hasSingleEmptyPlaceholder ? (prev[0].note || '') : '',
           isPrimary: true
+        };
+
+        if (hasSingleEmptyPlaceholder) {
+          return [newAttachment];
         }
-      ]);
+        return [...prev.map(a => ({ ...a, isPrimary: false })), newAttachment];
+      });
+
+      setUploadedDriveFolderLink(deptFolder.webViewLink || null);
+      setUploadedDriveFolderPath(folderPath);
+      setDriveUploadStatus(`Đã tải "${uploaded.name}" lên Google Drive → ${folderPath}`);
+    } catch (err: any) {
+      const msg = err?.message || 'Lỗi không xác định';
+      setDriveUploadError(
+        msg.includes('401')
+          ? 'Phiên đăng nhập Google Drive đã hết hạn. Vui lòng bấm "Kết nối Google Drive" lại để tải tệp.'
+          : `Không thể tải tệp lên Google Drive: ${msg}`
+      );
+    } finally {
+      setIsUploadingDrive(false);
       if (modalFileInputRef.current) modalFileInputRef.current.value = '';
     }
   };
@@ -833,12 +1022,26 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
   const handleSaveDocument = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      alert('Vui lòng nhập trích yếu hoặc tên văn bản / tài liệu!');
+      setFormError('Vui lòng nhập trích yếu hoặc tên văn bản / tài liệu!');
       return;
     }
 
     const finalDept = department === 'Khác' ? (customDepartment.trim() || 'Khác') : department;
-    const selectedProj = projects.find(p => p.id === projectId);
+
+    // Nếu là tài liệu đồng bộ từ dự án mẹ -> GIỮ NGUYÊN projectId & projectName để không hỏng liên kết quay về dự án
+    let finalProjectId: string | undefined;
+    let finalProjectName: string | undefined;
+    if (isProjectLocked && editingDoc) {
+      finalProjectId = editingDoc.projectId;
+      finalProjectName = editingDoc.projectName;
+    } else if (projectId) {
+      const selectedProj = projects.find(p => p.id === projectId);
+      finalProjectId = projectId;
+      finalProjectName = selectedProj ? selectedProj.name : undefined;
+    } else if (customProjectName.trim()) {
+      finalProjectId = undefined;
+      finalProjectName = customProjectName.trim();
+    }
 
     // Lọc các attachment có tên file hoặc link
     const validAttachments = modalAttachments.filter(a => a.fileName.trim() || a.fileLink?.trim());
@@ -849,8 +1052,8 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
       title: title.trim(),
       docType,
       department: finalDept,
-      projectId: projectId || undefined,
-      projectName: selectedProj ? selectedProj.name : undefined,
+      projectId: finalProjectId,
+      projectName: finalProjectName,
       issueDay,
       issueMonth,
       issueYear,
@@ -860,8 +1063,10 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
       note: note.trim() || undefined,
       status: 'effective' as const,
       attachments: validAttachments,
+      driveFileId: primaryAttachment?.driveFileId || editingDoc?.driveFileId,
       driveFileName: primaryAttachment?.fileName || undefined,
       driveFileLink: primaryAttachment?.fileLink || undefined,
+      driveFilePath: primaryAttachment?.driveFolderPath || uploadedDriveFolderPath || editingDoc?.driveFilePath,
       fileSize: primaryAttachment?.fileSize,
       source: 'standalone' as const,
       uploadedAt: primaryAttachment?.uploadedAt || new Date().toISOString()
@@ -1475,6 +1680,16 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
                             );
                           }
                           if (doc.projectName) {
+                            if (doc.source === 'standalone') {
+                              return (
+                                <span
+                                  className="inline-flex items-center gap-1 max-w-[165px] px-2 py-1 rounded-lg bg-slate-800/80 border border-slate-700/80 text-slate-300 text-left"
+                                  title={`Dự án tự ghi tại Quản lý tài liệu: ${doc.projectName}`}
+                                >
+                                  <span className="truncate">{doc.projectName}</span>
+                                </span>
+                              );
+                            }
                             return (
                               <button
                                 type="button"
@@ -1484,10 +1699,9 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
                                 }}
                                 onDoubleClick={(e) => e.stopPropagation()}
                                 className="inline-flex items-center gap-1 max-w-[165px] px-2 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700 hover:border-amber-400/60 text-slate-300 hover:text-amber-200 transition-all cursor-pointer text-left"
-                                title={`"${doc.projectName}" chưa khớp với dự án nào — Kích để chọn dự án liên kết`}
+                                title={`"${doc.projectName}" chưa khớp với dự án nào`}
                               >
                                 <span className="truncate">{doc.projectName}</span>
-                                <ArrowUpRight className="w-3 h-3 shrink-0 text-amber-400/80" />
                               </button>
                             );
                           }
@@ -1841,29 +2055,70 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
 
                 {/* 5. Thuộc dự án liên quan */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Dự án liên quan
-                  </label>
-                  {unlinkedProjectNotice && (
-                    <div className="mb-2 p-2 rounded-lg bg-amber-950/60 border border-amber-500/40 text-[11px] text-amber-200 leading-snug">
-                      {unlinkedProjectNotice}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Dự án liên quan
+                    </label>
+                    {isProjectLocked && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-300 bg-amber-950/60 border border-amber-500/40 px-2 py-0.5 rounded-full">
+                        <Lock className="w-2.5 h-2.5" />
+                        <span>Khóa liên kết dự án mẹ</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {isProjectLocked ? (
+                    <div className="space-y-1.5">
+                      <div className="w-full bg-slate-950/70 border border-amber-500/35 rounded-xl px-3 py-2 text-sm text-emerald-300 font-medium flex items-center justify-between gap-2 select-none">
+                        <span className="truncate">
+                          {(() => {
+                            const lockedProj = editingDoc ? resolveDocumentProject(editingDoc) : undefined;
+                            if (lockedProj) return `[${lockedProj.code}] ${lockedProj.name}`;
+                            return editingDoc?.projectName || 'Dự án liên kết';
+                          })()}
+                        </span>
+                        <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      </div>
+                      <p className="text-[11px] text-amber-300/90 leading-snug">
+                        Tài liệu đồng bộ từ dự án mẹ — không thể chỉnh sửa để đảm bảo kích vào tên dự án sẽ mở đúng về dự án gốc.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {unlinkedProjectNotice && (
+                        <div className="p-2 rounded-lg bg-amber-950/60 border border-amber-500/40 text-[11px] text-amber-200 leading-snug">
+                          {unlinkedProjectNotice}
+                        </div>
+                      )}
+                      <select
+                        value={projectId}
+                        onChange={(e) => {
+                          setProjectId(e.target.value);
+                          if (e.target.value) {
+                            setCustomProjectName('');
+                            setUnlinkedProjectNotice(null);
+                          }
+                        }}
+                        className={`w-full bg-slate-950 border rounded-xl px-3 py-2 text-sm text-slate-100 focus:border-rose-500 cursor-pointer ${
+                          unlinkedProjectNotice ? 'border-amber-500 ring-1 ring-amber-500/40' : 'border-slate-700'
+                        }`}
+                      >
+                        <option value="">-- Tự ghi tên dự án bên dưới / Văn bản chung --</option>
+                        {projects.map(p => (
+                          <option key={p.id} value={p.id}>[{p.code}] {p.name}</option>
+                        ))}
+                      </select>
+                      {!projectId && (
+                        <input
+                          type="text"
+                          value={customProjectName}
+                          onChange={(e) => setCustomProjectName(e.target.value)}
+                          placeholder="Hoặc tự gõ tên dự án tại đây (để trống nếu là văn bản chung)..."
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:border-rose-500"
+                        />
+                      )}
                     </div>
                   )}
-                  <select
-                    value={projectId}
-                    onChange={(e) => {
-                      setProjectId(e.target.value);
-                      if (e.target.value) setUnlinkedProjectNotice(null);
-                    }}
-                    className={`w-full bg-slate-950 border rounded-xl px-3 py-2 text-sm text-slate-100 focus:border-rose-500 cursor-pointer ${
-                      unlinkedProjectNotice ? 'border-amber-500 ring-1 ring-amber-500/40' : 'border-slate-700'
-                    }`}
-                  >
-                    <option value="">-- Tài liệu chung (Toàn công ty) --</option>
-                    {projects.map(p => (
-                      <option key={p.id} value={p.id}>[{p.code}] {p.name}</option>
-                    ))}
-                  </select>
                 </div>
               </div>
 
@@ -1943,16 +2198,27 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
                 </div>
               </div>
 
-              {/* 9. Tệp đính kèm & Các lần sửa đổi (Hỗ trợ 1 văn bản sửa nhiều lần) */}
+              {formError && (
+                <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-xs text-rose-200 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
+
+              {/* 9. Tệp đính kèm & Các lần sửa đổi (Tự tạo thư mục theo Bộ phận/Đơn vị trong Hồ sơ gốc Google Drive) */}
               <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
                   <div>
                     <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                       <Paperclip className="w-4 h-4 text-teal-400" />
-                      Tệp đính kèm &amp; Các lần sửa đổi ({modalAttachments.length})
+                      Tệp đính kèm &amp; Lưu Google Drive ({modalAttachments.length})
                     </span>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      1 văn bản có thể đính kèm nhiều file tương ứng với các lần dự thảo, bản chỉnh sửa, bản duyệt hoặc phụ lục.
+                    <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1 flex-wrap">
+                      <FolderOpen className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>Thư mục tự động trên Google Drive:</span>
+                      <span className="font-mono text-emerald-300 font-semibold">
+                        {rootDriveLabel} / {currentResolvedDepartment}
+                      </span>
                     </p>
                   </div>
 
@@ -1965,24 +2231,91 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
                     />
                     <button
                       type="button"
+                      disabled={isUploadingDrive}
                       onClick={() => modalFileInputRef.current?.click()}
-                      className="inline-flex items-center gap-1 text-xs text-teal-300 hover:text-teal-200 bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/30 px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer"
-                      title="Chọn tệp từ máy tính để tự động thêm vào danh sách"
+                      className="inline-flex items-center gap-1.5 text-xs text-emerald-200 hover:text-white bg-emerald-600/25 hover:bg-emerald-600/40 border border-emerald-500/40 px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                      title={`Tải tệp thực tế lên Google Drive vào thư mục "${rootDriveLabel} / ${currentResolvedDepartment}"`}
                     >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>+ Chọn tệp từ máy</span>
+                      {isUploadingDrive ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Đang tải lên Drive...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>+ Tải tệp lên Google Drive</span>
+                        </>
+                      )}
                     </button>
                     <button
                       type="button"
                       onClick={handleAddModalAttachmentRow}
                       className="inline-flex items-center gap-1 text-xs text-rose-300 hover:text-rose-200 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer"
-                      title="Thêm một dòng lần sửa đổi / đính kèm mới"
+                      title="Thêm một dòng lần sửa đổi / dán link thủ công"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>+ Thêm dòng lần sửa</span>
+                      <span>+ Thêm dòng</span>
                     </button>
                   </div>
                 </div>
+
+                {/* Trạng thái kết nối & kết quả tải lên Google Drive */}
+                {!driveToken && (
+                  <div className="p-2.5 rounded-lg bg-amber-950/40 border border-amber-500/35 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-200">
+                    <div className="flex items-center gap-2">
+                      <Cloud className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>Kết nối Google Drive để tự động tạo thư mục theo Bộ phận/Đơn vị và lưu file mở đọc trực tiếp.</span>
+                    </div>
+                    {onGoogleSignIn && (
+                      <button
+                        type="button"
+                        onClick={onGoogleSignIn}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] transition-colors cursor-pointer shrink-0"
+                      >
+                        Kết nối Google Drive
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {driveUploadError && (
+                  <div className="p-2.5 rounded-lg bg-rose-950/50 border border-rose-500/40 flex flex-wrap items-center justify-between gap-2 text-xs text-rose-200">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                      <span>{driveUploadError}</span>
+                    </div>
+                    {!driveToken && onGoogleSignIn && (
+                      <button
+                        type="button"
+                        onClick={onGoogleSignIn}
+                        className="px-2.5 py-1 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-semibold text-[11px] transition-colors cursor-pointer shrink-0"
+                      >
+                        Kết nối ngay
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {driveUploadStatus && (
+                  <div className="p-2.5 rounded-lg bg-emerald-950/50 border border-emerald-500/40 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-200">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="truncate">{driveUploadStatus}</span>
+                    </div>
+                    {uploadedDriveFolderLink && (
+                      <a
+                        href={uploadedDriveFolderLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-300 hover:text-emerald-200 underline shrink-0"
+                      >
+                        <span>Mở thư mục Drive</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                )}
 
                 {/* Danh sách các lần sửa */}
                 {modalAttachments.length === 0 ? (
@@ -2343,9 +2676,9 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
                   </div>
                 </div>
 
-                {/* Chọn file từ máy hoặc dán link */}
+                {/* Chọn file từ máy để tải thực tế lên Google Drive theo Bộ phận/Đơn vị */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="block text-xs font-semibold text-slate-300">
                       Tệp đính kèm <span className="text-rose-400">*</span>
                     </label>
@@ -2357,13 +2690,70 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
                     />
                     <button
                       type="button"
+                      disabled={isQuickUploadingDrive}
                       onClick={() => quickFileInputRef.current?.click()}
-                      className="text-xs text-teal-400 hover:text-teal-300 font-semibold underline underline-offset-2 cursor-pointer flex items-center gap-1"
+                      className="text-xs text-emerald-300 hover:text-emerald-200 bg-emerald-600/20 hover:bg-emerald-600/35 border border-emerald-500/35 px-2.5 py-1 rounded-lg font-semibold cursor-pointer flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-wait"
                     >
-                      <Upload className="w-3 h-3" />
-                      <span>+ Chọn file từ máy tính</span>
+                      {isQuickUploadingDrive ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>Đang tải lên Drive...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-3 h-3" />
+                          <span>+ Tải tệp lên Google Drive</span>
+                        </>
+                      )}
                     </button>
                   </div>
+
+                  <div className="text-[11px] text-slate-400 flex items-center gap-1 flex-wrap">
+                    <FolderOpen className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span>Lưu vào:</span>
+                    <span className="font-mono text-emerald-300">
+                      {rootDriveLabel} / {quickAttachDoc.department || 'Văn bản chung'}
+                    </span>
+                  </div>
+
+                  {!driveToken && (
+                    <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-500/35 flex items-center justify-between gap-2 text-[11px] text-amber-200">
+                      <span>Cần kết nối Google Drive để tải tệp lưu vào thư mục Bộ phận/Đơn vị.</span>
+                      {onGoogleSignIn && (
+                        <button
+                          type="button"
+                          onClick={onGoogleSignIn}
+                          className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold cursor-pointer shrink-0"
+                        >
+                          Kết nối Drive
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {quickUploadError && (
+                    <div className="p-2 rounded-lg bg-rose-950/50 border border-rose-500/40 text-[11px] text-rose-200 flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span>{quickUploadError}</span>
+                    </div>
+                  )}
+
+                  {quickUploadStatus && (
+                    <div className="p-2 rounded-lg bg-emerald-950/50 border border-emerald-500/40 text-[11px] text-emerald-200 flex items-center justify-between gap-2">
+                      <span className="truncate">{quickUploadStatus}</span>
+                      {quickDriveFolderLink && (
+                        <a
+                          href={quickDriveFolderLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-emerald-300 hover:underline font-semibold shrink-0 inline-flex items-center gap-0.5"
+                        >
+                          <span>Mở thư mục</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  )}
 
                   <input
                     type="text"
@@ -2378,7 +2768,7 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
                     type="text"
                     value={quickFileLink}
                     onChange={(e) => setQuickFileLink(e.target.value)}
-                    placeholder="Link Google Drive / Web (https://drive.google.com/...)"
+                    placeholder="Link Google Drive / Web (tự điền khi tải lên Google Drive)"
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:border-rose-500"
                   />
                 </div>
