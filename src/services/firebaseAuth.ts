@@ -1,4 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAnalytics, isSupported as isAnalyticsSupported, type Analytics } from 'firebase/analytics';
 import { 
   getAuth, 
   signInWithPopup, 
@@ -12,6 +13,19 @@ import firebaseConfig from '../../firebase-applet-config.json';
 // Initialize Firebase App instance safely (prevent duplicate initialization)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
+
+export let analytics: Analytics | null = null;
+if (typeof window !== 'undefined') {
+  isAnalyticsSupported()
+    .then((supported) => {
+      if (supported) {
+        analytics = getAnalytics(app);
+      }
+    })
+    .catch(() => {
+      // Bỏ qua nếu môi trường trình duyệt/iframe không hỗ trợ Analytics
+    });
+}
 
 const provider = new GoogleAuthProvider();
 // Request Google Drive scope

@@ -1,11 +1,9 @@
 {
-  "projectId": "ivory-poet-rwh4c",
-  "appId": "1:1037068002788:web:49f83918d01c83d56e53f1",
-  "apiKey": "AIzaSyDdjEqN2GPbn7y5FGY77fq0jn2kp6n4r7w",
-  "authDomain": "ivory-poet-rwh4c.firebaseapp.com",
-  "storageBucket": "ivory-poet-rwh4c.firebasestorage.app",
-  "messagingSenderId": "1037068002788",
-  "measurementId": "",
-  "oAuthClientId": "1037068002788-fmj1eg9k7opn2b75j7jac4las6u7pd5i.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "apiKey": "AIzaSyDHGAbVzEoMmUXCWkK6TrxjScX0C-49lsU",
+  "authDomain": "quanlyho-f4cd7.firebaseapp.com",
+  "projectId": "quanlyho-f4cd7",
+  "storageBucket": "quanlyho-f4cd7.firebasestorage.app",
+  "messagingSenderId": "1046742353036",
+  "appId": "1:1046742353036:web:e6c793ba310da8d9bb67a9",
+  "measurementId": "G-CMJZX2YVLY"
 }
