@@ -27,12 +27,19 @@ import {
   FileCheck2,
   PlusCircle,
   ChevronRight,
-  Calendar
+  Calendar,
+  ArrowUpRight
 } from 'lucide-react';
-import { Project, TaskItem, ManagedDocument, ManagedDocType, ManagedDocTypeInfo, DocumentAttachment } from '../types';
+import { Project, TaskItem, ManagedDocument, ManagedDocType, ManagedDocTypeInfo, ManagedDepartmentInfo, DocumentAttachment } from '../types';
 import { DocTypeManagementModal } from './DocTypeManagementModal';
+import { DepartmentManagementModal } from './DepartmentManagementModal';
 import { getDocTypeColorStyle } from '../utils/docTypeStyles';
-import { getStoredManagedDocTypes, DEFAULT_MANAGED_DOC_TYPES } from '../services/taskStorage';
+import {
+  getStoredManagedDocTypes,
+  DEFAULT_MANAGED_DOC_TYPES,
+  getStoredManagedDepartments,
+  DEFAULT_MANAGED_DEPARTMENTS
+} from '../services/taskStorage';
 
 /**
  * Helper: Trả về danh sách tất cả file đính kèm / các lần sửa đổi của một văn bản
@@ -124,6 +131,7 @@ interface DocumentManagementBoardProps {
   tasks: TaskItem[];
   standaloneDocs: ManagedDocument[];
   docTypes?: ManagedDocTypeInfo[];
+  departments?: ManagedDepartmentInfo[];
   initialProjectId?: string;
   initialSearchTerm?: string;
   onAddDocument: (doc: Omit<ManagedDocument, 'id'>) => void;
@@ -133,6 +141,13 @@ interface DocumentManagementBoardProps {
   onUpdateDocType?: (updatedType: ManagedDocTypeInfo) => void;
   onDeleteDocType?: (typeId: string, reassignToId?: string) => void;
   onResetDocTypes?: () => void;
+  onReorderDocTypes?: (reordered: ManagedDocTypeInfo[]) => void;
+  onAddDepartment?: (newDept: Omit<ManagedDepartmentInfo, 'id'>) => string;
+  onUpdateDepartment?: (updatedDept: ManagedDepartmentInfo, oldName: string) => void;
+  onDeleteDepartment?: (deptId: string, oldName: string, reassignToName?: string) => void;
+  onResetDepartments?: () => void;
+  onReorderDepartments?: (reordered: ManagedDepartmentInfo[]) => void;
+  onNavigateToProjectDetails?: (projectId: string) => void;
   onOpenScanModal?: () => void;
   isDriveConnected?: boolean;
 }
@@ -155,6 +170,7 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
   tasks,
   standaloneDocs,
   docTypes,
+  departments,
   initialProjectId,
   initialSearchTerm,
   onAddDocument,
@@ -164,6 +180,13 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
   onUpdateDocType,
   onDeleteDocType,
   onResetDocTypes,
+  onReorderDocTypes,
+  onAddDepartment,
+  onUpdateDepartment,
+  onDeleteDepartment,
+  onResetDepartments,
+  onReorderDepartments,
+  onNavigateToProjectDetails,
   onOpenScanModal,
   isDriveConnected
 }) => {
@@ -173,8 +196,19 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
 
   const [isDocTypeModalOpen, setIsDocTypeModalOpen] = useState(false);
 
+  // Departments State (sử dụng prop từ App hoặc fallback LocalStorage)
+  const [localDepartments, setLocalDepartments] = useState<ManagedDepartmentInfo[]>(() => getStoredManagedDepartments());
+  const activeDepartments = departments && departments.length > 0 ? departments : localDepartments;
+  const activeDepartmentNames = useMemo(() => activeDepartments.map(d => d.name), [activeDepartments]);
+
+  const [isDepartmentModalOpen, setIsDepartmentModalOpen] = useState(false);
+  const [unlinkedProjectNotice, setUnlinkedProjectNotice] = useState<string | null>(null);
+
   // Helper tra cứu loại văn bản linh hoạt
   const getTypeInfo = (typeId: string): { name: string; code: string; color: string } => {
+    if (!typeId || !typeId.trim()) {
+      return { name: 'Chưa phân loại', code: '---', color: 'slate' };
+    }
     const found = activeDocTypes.find(t => t.id === typeId);
     if (found) return found;
     return {
@@ -227,10 +261,111 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
       onResetDocTypes();
       return;
     }
-    if (window.confirm('Khôi phục danh mục loại văn bản về mặc định ban đầu?')) {
-      setLocalDocTypes(DEFAULT_MANAGED_DOC_TYPES);
-      localStorage.setItem('pm_managed_doc_types', JSON.stringify(DEFAULT_MANAGED_DOC_TYPES));
+    setLocalDocTypes(DEFAULT_MANAGED_DOC_TYPES);
+    localStorage.setItem('pm_managed_doc_types', JSON.stringify(DEFAULT_MANAGED_DOC_TYPES));
+  };
+
+  const handleInternalReorderDocTypes = (reordered: ManagedDocTypeInfo[]) => {
+    if (onReorderDocTypes) {
+      onReorderDocTypes(reordered);
+      return;
     }
+    setLocalDocTypes(reordered);
+    localStorage.setItem('pm_managed_doc_types', JSON.stringify(reordered));
+  };
+
+  // Handlers quản lý danh mục Phòng ban / Bộ phận
+  const handleInternalAddDepartment = (newDept: Omit<ManagedDepartmentInfo, 'id'>): string => {
+    if (onAddDepartment) {
+      return onAddDepartment(newDept);
+    }
+    const newId = `dept-${Date.now()}`;
+    const created: ManagedDepartmentInfo = { ...newDept, id: newId };
+    setLocalDepartments(prev => {
+      const updated = [...prev, created];
+      localStorage.setItem('pm_managed_departments', JSON.stringify(updated));
+      return updated;
+    });
+    return created.name;
+  };
+
+  const handleInternalUpdateDepartment = (updated: ManagedDepartmentInfo, oldName: string) => {
+    if (selectedDepartment === oldName && oldName !== updated.name) {
+      setSelectedDepartment(updated.name);
+    }
+    if (department === oldName && oldName !== updated.name) {
+      setDepartment(updated.name);
+    }
+    if (onUpdateDepartment) {
+      onUpdateDepartment(updated, oldName);
+      return;
+    }
+    setLocalDepartments(prev => {
+      const nextList = prev.map(d => d.id === updated.id ? updated : d);
+      localStorage.setItem('pm_managed_departments', JSON.stringify(nextList));
+      return nextList;
+    });
+  };
+
+  const handleInternalDeleteDepartment = (deptId: string, oldName: string, reassignToName?: string) => {
+    if (selectedDepartment === oldName) {
+      setSelectedDepartment(reassignToName || 'all');
+    }
+    if (department === oldName) {
+      setDepartment(reassignToName || activeDepartmentNames.find(n => n !== oldName) || 'Khác');
+    }
+    if (onDeleteDepartment) {
+      onDeleteDepartment(deptId, oldName, reassignToName);
+      return;
+    }
+    setLocalDepartments(prev => {
+      const nextList = prev.filter(d => d.id !== deptId);
+      localStorage.setItem('pm_managed_departments', JSON.stringify(nextList));
+      return nextList;
+    });
+  };
+
+  const handleInternalResetDepartments = () => {
+    setSelectedDepartment('all');
+    if (onResetDepartments) {
+      onResetDepartments();
+      return;
+    }
+    setLocalDepartments(DEFAULT_MANAGED_DEPARTMENTS);
+    localStorage.setItem('pm_managed_departments', JSON.stringify(DEFAULT_MANAGED_DEPARTMENTS));
+  };
+
+  const handleInternalReorderDepartments = (reordered: ManagedDepartmentInfo[]) => {
+    if (onReorderDepartments) {
+      onReorderDepartments(reordered);
+      return;
+    }
+    setLocalDepartments(reordered);
+    localStorage.setItem('pm_managed_departments', JSON.stringify(reordered));
+  };
+
+  // Helper tra cứu Dự án tương ứng với một văn bản (theo projectId hoặc tên/mã dự án)
+  const resolveDocumentProject = (doc: ManagedDocument): Project | undefined => {
+    if (doc.projectId) {
+      const byId = projects.find(p => p.id === doc.projectId);
+      if (byId) return byId;
+    }
+    if (doc.projectName && doc.projectName.trim()) {
+      const target = doc.projectName.trim().toLowerCase();
+      const exact = projects.find(
+        p =>
+          p.name.trim().toLowerCase() === target ||
+          `[${p.code}] ${p.name}`.trim().toLowerCase() === target ||
+          p.code.trim().toLowerCase() === target
+      );
+      if (exact) return exact;
+      const partial = projects.find(p => {
+        const pName = p.name.trim().toLowerCase();
+        return (pName.length >= 6 && target.includes(pName)) || (target.length >= 6 && pName.includes(target));
+      });
+      if (partial) return partial;
+    }
+    return undefined;
   };
 
   // Filters & Search
@@ -291,23 +426,25 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
   const [quickIsPrimary, setQuickIsPrimary] = useState(true);
   const quickFileInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. TỔNG HỢP TOÀN BỘ TÀI LIỆU TRÊN TOÀN HỆ THỐNG
+  // 1. TỔNG HỢP TÀI LIỆU (Chỉ gồm văn bản tự thêm và các mục đã khai báo Loại văn bản hoặc Phòng ban)
   const allDocuments = useMemo<ManagedDocument[]>(() => {
     const list: ManagedDocument[] = [...standaloneDocs];
 
-    // Thu thập thêm tài liệu từ các mục "Chi tiết" của tất cả các dự án (Chỉ khi người dùng đã tự phân loại docType)
+    // Thu thập tài liệu từ các mục "Chi tiết" của tất cả các dự án (Chỉ khi người dùng đã khai báo Loại văn bản hoặc Phòng ban)
     projects.forEach(p => {
       if (p.detailItems && p.detailItems.length > 0) {
         p.detailItems.forEach(item => {
-          if (item.docType && item.docType.trim() !== '') {
+          const hasDocType = !!(item.docType && item.docType.trim() !== '');
+          const hasDepartment = !!(item.department && item.department.trim() !== '');
+          if (hasDocType || hasDepartment) {
             const fullNumber = [item.docNumber, item.docText].filter(Boolean).join('');
 
             list.push({
               id: `proj-det-${item.id}`,
               docNumber: fullNumber || '',
               title: item.content || `Tài liệu dự án ${p.name}`,
-              docType: item.docType as ManagedDocType,
-              department: p.manager || 'Ban Quản lý Dự án',
+              docType: (item.docType || '') as ManagedDocType,
+              department: item.department || '',
               projectId: p.id,
               projectName: p.name,
               issueDay: item.day,
@@ -328,19 +465,21 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
         });
       }
 
-      // Thu thập từ các phần "Tài liệu kèm theo" (Chỉ khi người dùng đã tự phân loại docType)
+      // Thu thập từ các phần "Tài liệu kèm theo" (Chỉ khi người dùng đã khai báo Loại văn bản hoặc Phòng ban)
       if (p.attachedSections && p.attachedSections.length > 0) {
         p.attachedSections.forEach(sec => {
           (sec.items || []).forEach(item => {
-            if (item.docType && item.docType.trim() !== '') {
+            const hasDocType = !!(item.docType && item.docType.trim() !== '');
+            const hasDepartment = !!(item.department && item.department.trim() !== '');
+            if (hasDocType || hasDepartment) {
               const fullNumber = [item.docNumber, item.docText].filter(Boolean).join('');
 
               list.push({
                 id: `sec-doc-${item.id}`,
                 docNumber: fullNumber || '',
                 title: item.content || `Tài liệu kèm theo - ${sec.title}`,
-                docType: item.docType as ManagedDocType,
-                department: p.manager || 'Ban Quản lý Dự án',
+                docType: (item.docType || '') as ManagedDocType,
+                department: item.department || '',
                 projectId: p.id,
                 projectName: p.name,
                 issueDay: item.day,
@@ -363,44 +502,8 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
       }
     });
 
-    // Thu thập từ scanned documents trong Tasks
-    tasks.forEach(t => {
-      if (t.documents && t.documents.length > 0) {
-        t.documents.forEach(doc => {
-          let detectedType: ManagedDocType = 'khac';
-          if (doc.type === 'contract') detectedType = 'hop_dong';
-          else if (doc.type === 'acceptance') detectedType = 'bien_ban';
-          else if (doc.type === 'drawing') detectedType = 'ban_ve';
-          else if (doc.type === 'invoice') detectedType = 'hoa_don';
-          else if (doc.type === 'report') detectedType = 'bao_cao';
-
-          const proj = projects.find(p => p.id === t.projectId);
-
-          list.push({
-            id: `task-scan-${doc.id}`,
-            docNumber: doc.name.split('.')[0] || 'Văn bản scan',
-            title: doc.description || doc.name,
-            docType: detectedType,
-            department: proj?.manager || 'Ban Quản lý Dự án',
-            projectId: t.projectId,
-            projectName: proj?.name || 'Dự án',
-            issueDate: doc.uploadDate,
-            signer: t.assignee,
-            status: 'effective',
-            driveFileId: doc.driveFileId,
-            driveFileName: doc.name,
-            driveFileLink: doc.driveViewLink,
-            fileSize: doc.fileSize,
-            uploadedAt: doc.uploadDate,
-            source: 'task_scan',
-            sourceId: doc.id
-          });
-        });
-      }
-    });
-
     return list;
-  }, [standaloneDocs, projects, tasks]);
+  }, [standaloneDocs, projects]);
 
   // Bộ danh sách các năm xuất hiện
   const availableYears = useMemo(() => {
@@ -417,14 +520,14 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
     return Array.from(years).sort().reverse();
   }, [allDocuments]);
 
-  // Bộ danh sách các phòng ban xuất hiện
+  // Bộ danh sách các phòng ban xuất hiện (từ danh mục quản lý + phòng ban có trong văn bản)
   const availableDepartments = useMemo(() => {
-    const deps = new Set<string>(COMMON_DEPARTMENTS);
+    const deps = new Set<string>(activeDepartmentNames);
     allDocuments.forEach(d => {
-      if (d.department) deps.add(d.department);
+      if (d.department && d.department.trim()) deps.add(d.department);
     });
     return Array.from(deps);
-  }, [allDocuments]);
+  }, [activeDepartmentNames, allDocuments]);
 
   // LỌC DANH SÁCH TÀI LIỆU
   const filteredDocuments = useMemo(() => {
@@ -466,8 +569,11 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
       }
 
       // 4. Lọc dự án
-      if (selectedProjectId !== 'all' && doc.projectId !== selectedProjectId) {
-        return false;
+      if (selectedProjectId !== 'all') {
+        const resolvedProj = resolveDocumentProject(doc);
+        if (doc.projectId !== selectedProjectId && resolvedProj?.id !== selectedProjectId) {
+          return false;
+        }
       }
 
       // 5. Lọc năm
@@ -599,10 +705,11 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
   // ================= XỬ LÝ MODAL THÊM / SỬA TOÀN BỘ VĂN BẢN =================
   const handleOpenAddModal = () => {
     setEditingDoc(null);
+    setUnlinkedProjectNotice(null);
     setDocNumber('');
     setTitle('');
     setDocType('to_trinh');
-    setDepartment('Ban Quản lý Dự án');
+    setDepartment(activeDepartmentNames[1] || activeDepartmentNames[0] || 'Ban Quản lý Dự án');
     setCustomDepartment('');
     setProjectId(projects[0]?.id || '');
     setIssueDay(new Date().getDate().toString().padStart(2, '0'));
@@ -625,19 +732,25 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
     setIsModalOpen(true);
   };
 
-  const handleOpenEditModal = (doc: ManagedDocument) => {
+  const handleOpenEditModal = (doc: ManagedDocument, showUnlinkedNotice: boolean = false) => {
     setEditingDoc(doc);
+    setUnlinkedProjectNotice(
+      showUnlinkedNotice && doc.projectName
+        ? `Văn bản đang ghi tên dự án "${doc.projectName}" nhưng chưa liên kết với dự án nào trong danh sách. Hãy chọn dự án tương ứng bên dưới rồi lưu để có thể kích mở trực tiếp.`
+        : null
+    );
     setDocNumber(doc.docNumber || '');
     setTitle(doc.title || '');
     setDocType((doc.docType || '') as ManagedDocType);
-    if (COMMON_DEPARTMENTS.includes(doc.department)) {
+    if (activeDepartmentNames.includes(doc.department)) {
       setDepartment(doc.department);
       setCustomDepartment('');
     } else {
       setDepartment('Khác');
       setCustomDepartment(doc.department);
     }
-    setProjectId(doc.projectId || '');
+    const matchedProj = resolveDocumentProject(doc);
+    setProjectId(doc.projectId || matchedProj?.id || '');
     setIssueDay(doc.issueDay || (doc.issueDate ? doc.issueDate.split('-')[2] : '01'));
     setIssueMonth(doc.issueMonth || (doc.issueDate ? doc.issueDate.split('-')[1] : '01'));
     setIssueYear(doc.issueYear || (doc.issueDate ? doc.issueDate.split('-')[0] : '2026'));
@@ -881,6 +994,21 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
               </span>
             </button>
 
+            {/* Nút Quản lý Phòng ban / Bộ phận */}
+            <button
+              type="button"
+              onClick={() => setIsDepartmentModalOpen(true)}
+              id="btn-manage-departments"
+              className="flex items-center gap-2 bg-slate-800 hover:bg-slate-750 text-sky-300 border border-sky-500/40 hover:border-sky-400 active:scale-95 px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer shadow-xs"
+              title="Thêm mới, đổi tên hoặc quản lý danh mục phòng ban / bộ phận"
+            >
+              <Building2 className="w-4 h-4 text-sky-400" />
+              <span>Phòng ban</span>
+              <span className="text-[10px] bg-slate-900 px-1.5 py-0.5 rounded font-mono text-sky-300 border border-sky-700/60 font-bold">
+                {activeDepartments.length}
+              </span>
+            </button>
+
             {onOpenScanModal && (
               <button
                 onClick={onOpenScanModal}
@@ -1015,16 +1143,26 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
             </div>
 
             {/* Lọc phòng ban / bộ phận */}
-            <select
-              value={selectedDepartment}
-              onChange={(e) => setSelectedDepartment(e.target.value)}
-              className="bg-slate-950 border border-slate-700/80 text-xs sm:text-sm text-slate-200 rounded-xl px-2.5 py-2 focus:border-rose-500 cursor-pointer"
-            >
-              <option value="all">Tất cả phòng ban</option>
-              {availableDepartments.map(dept => (
-                <option key={dept} value={dept}>{dept}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1">
+              <select
+                value={selectedDepartment}
+                onChange={(e) => setSelectedDepartment(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700/80 text-xs sm:text-sm text-slate-200 rounded-xl px-2.5 py-2 focus:border-rose-500 cursor-pointer"
+              >
+                <option value="all">Tất cả phòng ban ({activeDepartments.length})</option>
+                {availableDepartments.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setIsDepartmentModalOpen(true)}
+                className="p-2 bg-slate-950 border border-slate-700/80 hover:border-sky-400 text-slate-400 hover:text-sky-400 rounded-xl transition-colors cursor-pointer shrink-0"
+                title="Quản lý danh mục phòng ban / bộ phận (Thêm mới, Sửa tên, Xóa)"
+              >
+                <Settings className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
             {/* Lọc dự án */}
             <select
@@ -1106,48 +1244,38 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
             <span>+ Sửa loại</span>
           </button>
 
-          <button
-            onClick={() => setSelectedDepartment(selectedDepartment === 'Ban Quản lý Dự án' ? 'all' : 'Ban Quản lý Dự án')}
-            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-              selectedDepartment === 'Ban Quản lý Dự án'
-                ? 'bg-blue-600 text-white font-semibold'
-                : 'bg-slate-800 text-blue-300 hover:bg-blue-950/40'
-            }`}
-          >
-            Ban QLDA
-          </button>
+          {activeDepartments.slice(0, 4).map((dept, deptIdx) => {
+            const pillStyles = [
+              { active: 'bg-blue-600 text-white font-semibold', idle: 'bg-slate-800 text-blue-300 hover:bg-blue-950/40' },
+              { active: 'bg-indigo-600 text-white font-semibold', idle: 'bg-slate-800 text-indigo-300 hover:bg-indigo-950/40' },
+              { active: 'bg-yellow-600 text-white font-semibold', idle: 'bg-slate-800 text-yellow-300 hover:bg-yellow-950/40' },
+              { active: 'bg-purple-600 text-white font-semibold', idle: 'bg-slate-800 text-purple-300 hover:bg-purple-950/40' }
+            ];
+            const palette = pillStyles[deptIdx % pillStyles.length];
+            const isSelected = selectedDepartment === dept.name;
+            return (
+              <button
+                key={dept.id}
+                type="button"
+                onClick={() => setSelectedDepartment(isSelected ? 'all' : dept.name)}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  isSelected ? palette.active : palette.idle
+                }`}
+                title={`Lọc theo ${dept.name}`}
+              >
+                {dept.name}
+              </button>
+            );
+          })}
 
           <button
-            onClick={() => setSelectedDepartment(selectedDepartment === 'Phòng Kỹ thuật - Vận hành' ? 'all' : 'Phòng Kỹ thuật - Vận hành')}
-            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-              selectedDepartment === 'Phòng Kỹ thuật - Vận hành'
-                ? 'bg-indigo-600 text-white font-semibold'
-                : 'bg-slate-800 text-indigo-300 hover:bg-indigo-950/40'
-            }`}
+            type="button"
+            onClick={() => setIsDepartmentModalOpen(true)}
+            className="px-2 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-750 text-sky-300 border border-sky-500/30 hover:border-sky-400 transition-colors flex items-center gap-1 cursor-pointer font-medium"
+            title="Thêm hoặc sửa danh mục Phòng ban / Bộ phận"
           >
-            Phòng Kỹ thuật
-          </button>
-
-          <button
-            onClick={() => setSelectedDepartment(selectedDepartment === 'Phòng Kế toán - Tài chính' ? 'all' : 'Phòng Kế toán - Tài chính')}
-            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-              selectedDepartment === 'Phòng Kế toán - Tài chính'
-                ? 'bg-yellow-600 text-white font-semibold'
-                : 'bg-slate-800 text-yellow-300 hover:bg-yellow-950/40'
-            }`}
-          >
-            Phòng Kế toán
-          </button>
-
-          <button
-            onClick={() => setSelectedDepartment(selectedDepartment === 'Ban Giám đốc' ? 'all' : 'Ban Giám đốc')}
-            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-              selectedDepartment === 'Ban Giám đốc'
-                ? 'bg-purple-600 text-white font-semibold'
-                : 'bg-slate-800 text-purple-300 hover:bg-purple-950/40'
-            }`}
-          >
-            Ban Giám đốc
+            <Settings className="w-3 h-3 text-sky-400" />
+            <span>+ Sửa phòng ban</span>
           </button>
 
           <button
@@ -1225,9 +1353,13 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
         {filteredDocuments.length === 0 ? (
           <div className="text-center py-16 px-4">
             <FileText className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <h3 className="text-base font-semibold text-slate-300">Không tìm thấy tài liệu phù hợp</h3>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              Không có văn bản nào khớp với tiêu chí tìm kiếm hoặc bộ lọc. Vui lòng thử lại với từ khóa khác hoặc bấm nút thêm mới.
+            <h3 className="text-base font-semibold text-slate-300">
+              {allDocuments.length === 0 ? 'Chưa có tài liệu nào trong sổ Quản lý tài liệu' : 'Không tìm thấy tài liệu phù hợp'}
+            </h3>
+            <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+              {allDocuments.length === 0
+                ? 'Sổ Quản lý tài liệu mặc định để trống. Tài liệu sẽ tự động xuất hiện tại đây khi bạn khai báo Loại văn bản hoặc Phòng ban trong mục Chi tiết dự án, hoặc bấm nút thêm mới bên dưới.'
+                : 'Không có văn bản nào khớp với tiêu chí tìm kiếm hoặc bộ lọc. Vui lòng thử lại với từ khóa khác hoặc bấm nút thêm mới.'}
             </p>
             <button
               onClick={handleOpenAddModal}
@@ -1323,13 +1455,44 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
 
                       {/* Dự án liên quan */}
                       <td className="py-3 px-3 whitespace-nowrap text-xs">
-                        {doc.projectName ? (
-                          <span className="text-slate-300 truncate max-w-[140px] block" title={doc.projectName}>
-                            {doc.projectName}
-                          </span>
-                        ) : (
-                          <span className="text-slate-500 italic">Văn bản chung</span>
-                        )}
+                        {(() => {
+                          const matchedProject = resolveDocumentProject(doc);
+                          if (matchedProject && onNavigateToProjectDetails) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onNavigateToProjectDetails(matchedProject.id);
+                                }}
+                                onDoubleClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 max-w-[165px] px-2 py-1 rounded-lg bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/30 hover:border-emerald-400 text-emerald-300 hover:text-emerald-200 font-medium transition-all cursor-pointer group/proj text-left"
+                                title={`Kích để mở Chi tiết dự án: [${matchedProject.code}] ${matchedProject.name}`}
+                              >
+                                <span className="truncate">{doc.projectName || matchedProject.name}</span>
+                                <ArrowUpRight className="w-3 h-3 shrink-0 text-emerald-400 group-hover/proj:translate-x-0.5 group-hover/proj:-translate-y-0.5 transition-transform" />
+                              </button>
+                            );
+                          }
+                          if (doc.projectName) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenEditModal(doc, true);
+                                }}
+                                onDoubleClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 max-w-[165px] px-2 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700 hover:border-amber-400/60 text-slate-300 hover:text-amber-200 transition-all cursor-pointer text-left"
+                                title={`"${doc.projectName}" chưa khớp với dự án nào — Kích để chọn dự án liên kết`}
+                              >
+                                <span className="truncate">{doc.projectName}</span>
+                                <ArrowUpRight className="w-3 h-3 shrink-0 text-amber-400/80" />
+                              </button>
+                            );
+                          }
+                          return <span className="text-slate-500 italic">Văn bản chung</span>;
+                        })()}
                       </td>
 
                       {/* Ngày ban hành */}
@@ -1640,16 +1803,27 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* 4. Bộ phận / Phòng ban ban hành */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Bộ phận / Phòng ban ban hành <span className="text-rose-400">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Bộ phận / Phòng ban ban hành <span className="text-rose-400">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsDepartmentModalOpen(true)}
+                      className="text-sky-400 hover:text-sky-300 text-[11px] font-semibold inline-flex items-center gap-1 hover:underline cursor-pointer"
+                      title="Thêm mới, đổi tên hoặc quản lý danh mục phòng ban"
+                    >
+                      <Settings className="w-3 h-3" />
+                      <span>Sửa phòng ban</span>
+                    </button>
+                  </div>
                   <select
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:border-rose-500 cursor-pointer mb-2"
                   >
-                    {COMMON_DEPARTMENTS.map(d => (
-                      <option key={d} value={d}>{d}</option>
+                    {activeDepartments.map(d => (
+                      <option key={d.id} value={d.name}>{d.name}</option>
                     ))}
                     <option value="Khác">Nhập phòng ban khác...</option>
                   </select>
@@ -1670,10 +1844,20 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                     Dự án liên quan
                   </label>
+                  {unlinkedProjectNotice && (
+                    <div className="mb-2 p-2 rounded-lg bg-amber-950/60 border border-amber-500/40 text-[11px] text-amber-200 leading-snug">
+                      {unlinkedProjectNotice}
+                    </div>
+                  )}
                   <select
                     value={projectId}
-                    onChange={(e) => setProjectId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:border-rose-500 cursor-pointer"
+                    onChange={(e) => {
+                      setProjectId(e.target.value);
+                      if (e.target.value) setUnlinkedProjectNotice(null);
+                    }}
+                    className={`w-full bg-slate-950 border rounded-xl px-3 py-2 text-sm text-slate-100 focus:border-rose-500 cursor-pointer ${
+                      unlinkedProjectNotice ? 'border-amber-500 ring-1 ring-amber-500/40' : 'border-slate-700'
+                    }`}
                   >
                     <option value="">-- Tài liệu chung (Toàn công ty) --</option>
                     {projects.map(p => (
@@ -2257,9 +2441,28 @@ export const DocumentManagementBoard: React.FC<DocumentManagementBoardProps> = (
         onUpdateDocType={handleInternalUpdateDocType}
         onDeleteDocType={handleInternalDeleteDocType}
         onResetDocTypes={handleInternalResetDocTypes}
+        onReorderDocTypes={handleInternalReorderDocTypes}
         onSelectDocType={(newTypeId) => {
           setDocType(newTypeId as ManagedDocType);
           setIsDocTypeModalOpen(false);
+        }}
+      />
+
+      {/* Modal Quản lý / Sửa / Thêm Phòng ban / Bộ phận */}
+      <DepartmentManagementModal
+        isOpen={isDepartmentModalOpen}
+        onClose={() => setIsDepartmentModalOpen(false)}
+        departments={activeDepartments}
+        allDocuments={allDocuments}
+        onAddDepartment={handleInternalAddDepartment}
+        onUpdateDepartment={handleInternalUpdateDepartment}
+        onDeleteDepartment={handleInternalDeleteDepartment}
+        onResetDepartments={handleInternalResetDepartments}
+        onReorderDepartments={handleInternalReorderDepartments}
+        onSelectDepartment={(deptName) => {
+          setDepartment(deptName);
+          setCustomDepartment('');
+          setIsDepartmentModalOpen(false);
         }}
       />
     </div>

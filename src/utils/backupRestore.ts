@@ -1,4 +1,4 @@
-import { Project, TaskItem, CategoryInfo, ManagedDocument, ManagedDocTypeInfo } from '../types';
+import { Project, TaskItem, CategoryInfo, ManagedDocument, ManagedDocTypeInfo, ManagedDepartmentInfo } from '../types';
 
 export interface FullBackupPayload {
   app: string;
@@ -15,6 +15,7 @@ export interface FullBackupPayload {
   activeProjectId?: string;
   standaloneDocs?: ManagedDocument[];
   documentTypes?: ManagedDocTypeInfo[];
+  departments?: ManagedDepartmentInfo[];
 }
 
 /**
@@ -28,7 +29,8 @@ export function generateBackupPayload(
   activeProjectId: string,
   companyName: string,
   standaloneDocs?: ManagedDocument[],
-  documentTypes?: ManagedDocTypeInfo[]
+  documentTypes?: ManagedDocTypeInfo[],
+  departments?: ManagedDepartmentInfo[]
 ): FullBackupPayload {
   const now = new Date();
   const backupTimeFormatted = now.toLocaleDateString('vi-VN', {
@@ -54,7 +56,8 @@ export function generateBackupPayload(
     masterDrivePath,
     activeProjectId,
     standaloneDocs,
-    documentTypes
+    documentTypes,
+    departments
   };
 }
 

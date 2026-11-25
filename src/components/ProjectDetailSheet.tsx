@@ -42,7 +42,8 @@ import {
   AttachedDocSection,
   ProjectStatus,
   ManagedDocument,
-  ManagedDocTypeInfo
+  ManagedDocTypeInfo,
+  ManagedDepartmentInfo
 } from '../types';
 import { 
   ensureProjectHierarchicalFolder,
@@ -54,7 +55,8 @@ import {
   parseProjectFromJson 
 } from '../utils/exportProjectHtml';
 import { 
-  getStoredManagedDocTypes 
+  getStoredManagedDocTypes,
+  getStoredManagedDepartments
 } from '../services/taskStorage';
 import { getDocTypeColorStyle } from '../utils/docTypeStyles';
 
@@ -215,6 +217,8 @@ interface ProjectDetailSheetProps {
   project: Project;
   allProjects?: Project[];
   standaloneDocs?: ManagedDocument[];
+  docTypes?: ManagedDocTypeInfo[];
+  departments?: ManagedDepartmentInfo[];
   onSelectProject?: (projectId: string) => void;
   onSaveProject: (projectData: Partial<Project>) => void;
   onCreateProjectFromSection?: (newProject: Project, updatedCurrentProject: Project) => void;
@@ -231,6 +235,8 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
   project,
   allProjects = [],
   standaloneDocs = [],
+  docTypes: propDocTypes,
+  departments: propDepartments,
   onSelectProject,
   onSaveProject,
   onCreateProjectFromSection,
@@ -242,7 +248,10 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
   onOpenScanModal,
   onOpenBackupModal
 }) => {
-  const [docTypes] = useState<ManagedDocTypeInfo[]>(() => getStoredManagedDocTypes());
+  const [fallbackDocTypes] = useState<ManagedDocTypeInfo[]>(() => getStoredManagedDocTypes());
+  const docTypes = propDocTypes && propDocTypes.length > 0 ? propDocTypes : fallbackDocTypes;
+  const [fallbackDepartments] = useState<ManagedDepartmentInfo[]>(() => getStoredManagedDepartments());
+  const activeDepartments = propDepartments && propDepartments.length > 0 ? propDepartments : fallbackDepartments;
   const [itemTypes, setItemTypes] = useState<ItemType[]>(() => getProjectItemTypes(project));
   const itemType = itemTypes[0] || 'project';
 
@@ -337,6 +346,8 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
           driveFileName: it.driveFileName,
           driveFileLink: it.driveFileLink,
           driveFilePath: it.driveFilePath,
+          docType: it.docType,
+          department: it.department,
           isStartDateSelected: idx === 0
         }));
       }
@@ -390,7 +401,9 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
                 driveFileId: it.driveFileId,
                 driveFileName: it.driveFileName,
                 driveFileLink: it.driveFileLink,
-                driveFilePath: it.driveFilePath
+                driveFilePath: it.driveFilePath,
+                docType: it.docType,
+                department: it.department
               }))
             };
           }
@@ -483,19 +496,23 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
     status, detailItems, detailStorageLocation, attachedSections
   ]);
 
-  // Đếm tổng số văn bản liên quan đến dự án này
+  // Đếm tổng số văn bản đã đồng bộ sang Quản lý tài liệu của dự án này
   const projectDocCount = useMemo(() => {
     let count = 0;
     if (standaloneDocs && Array.isArray(standaloneDocs)) {
       count += standaloneDocs.filter(d => d.projectId === project.id || d.projectName === project.name).length;
     }
     if (detailItems && Array.isArray(detailItems)) {
-      count += detailItems.filter(it => it.content || it.docNumber || it.driveFileName).length;
+      count += detailItems.filter(
+        it => (it.docType && it.docType.trim() !== '') || (it.department && it.department.trim() !== '')
+      ).length;
     }
     if (attachedSections && Array.isArray(attachedSections)) {
       attachedSections.forEach(sec => {
         if (sec.items && Array.isArray(sec.items)) {
-          count += sec.items.filter(it => it.content || it.docNumber || it.driveFileName).length;
+          count += sec.items.filter(
+            it => (it.docType && it.docType.trim() !== '') || (it.department && it.department.trim() !== '')
+          ).length;
         }
       });
     }
@@ -556,6 +573,8 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
           driveFileName: it.driveFileName,
           driveFileLink: it.driveFileLink,
           driveFilePath: it.driveFilePath,
+          docType: it.docType,
+          department: it.department,
           isStartDateSelected: idx === 0
         }));
       }
@@ -608,7 +627,9 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
                 driveFileId: it.driveFileId,
                 driveFileName: it.driveFileName,
                 driveFileLink: it.driveFileLink,
-                driveFilePath: it.driveFilePath
+                driveFilePath: it.driveFilePath,
+                docType: it.docType,
+                department: it.department
               }))
             };
           }
@@ -1009,6 +1030,8 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
       driveFileName: item.driveFileName,
       driveFileLink: item.driveFileLink,
       driveFilePath: item.driveFilePath,
+      docType: item.docType,
+      department: item.department,
       isStartDateSelected: idx === 0
     }));
 
@@ -2191,12 +2214,12 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
                   <th rowSpan={2} className="border border-slate-700 print:border-black px-3 py-2 min-w-[150px] text-center">
                     Lưu Drive
                   </th>
-                  <th rowSpan={2} className="border border-slate-700 print:border-black px-3 py-2 min-w-[170px] text-center bg-slate-850">
+                  <th rowSpan={2} className="border border-slate-700 print:border-black px-3 py-2 min-w-[195px] text-center bg-slate-850">
                     <div className="flex items-center justify-center gap-1.5">
                       <FileText className="w-4 h-4 text-rose-400" />
-                      <span>Loại văn bản</span>
+                      <span>Loại văn bản / Phòng ban</span>
                     </div>
-                    <div className="text-[10px] text-emerald-400 font-normal">Tự chọn → Tự sang QL tài liệu</div>
+                    <div className="text-[10px] text-emerald-400 font-normal">Chọn loại VB hoặc phòng ban → Sang QLTL</div>
                   </th>
                 </tr>
                 <tr className="bg-slate-900/90 print:bg-slate-50 border-b border-slate-700 print:border-black text-slate-300 print:text-black font-semibold text-[11px] text-center">
@@ -2371,12 +2394,14 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
                         </select>
                         
                         {(() => {
-                          const activeType = item.docType;
-                          if (!activeType) {
+                          const activeType = item.docType?.trim() || '';
+                          const activeDept = item.department?.trim() || '';
+                          const isSyncedToQLTL = !!(activeType || activeDept);
+                          if (!isSyncedToQLTL) {
                             return (
                               <div className="flex items-center justify-between gap-1 px-0.5 text-[10px] text-slate-500">
-                                <span className="italic truncate" title="Để trống: Tài liệu này không nhảy sang Quản lý tài liệu">
-                                  Chưa phân (Không sang QLTL)
+                                <span className="italic truncate" title="Để trống cả loại văn bản và phòng ban: Tài liệu này không nhảy sang Quản lý tài liệu">
+                                  Chưa khai báo (Không sang QLTL)
                                 </span>
                                 <div className="flex items-center gap-1.5 print:hidden shrink-0">
                                   <button
@@ -2396,7 +2421,9 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
                             );
                           }
 
-                          const typeInfo = docTypes.find(t => t.id === activeType) || { code: 'VB', name: 'Văn bản', color: 'slate' };
+                          const typeInfo = activeType
+                            ? (docTypes.find(t => t.id === activeType) || { code: 'VB', name: 'Văn bản', color: 'slate' })
+                            : { code: 'PB', name: 'Phòng ban', color: 'blue' };
                           const colorStyle = getDocTypeColorStyle(typeInfo.color);
                           return (
                             <div className="flex items-center justify-between gap-1 px-0.5">
@@ -2419,9 +2446,12 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => handleUpdateDetailItem(item.id, 'docType', '')}
+                                  onClick={() => {
+                                    handleUpdateDetailItem(item.id, 'docType', '');
+                                    handleUpdateDetailItem(item.id, 'department', '');
+                                  }}
                                   className="text-[10px] text-slate-400 hover:text-rose-400 p-0.5 cursor-pointer"
-                                  title="Bỏ phân loại (gỡ khỏi Quản lý tài liệu)"
+                                  title="Bỏ khai báo loại văn bản & phòng ban (gỡ khỏi Quản lý tài liệu)"
                                 >
                                   ✕
                                 </button>
@@ -2441,6 +2471,31 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
                             </div>
                           );
                         })()}
+
+                        {/* Chọn Phòng ban / Bộ phận (đồng bộ theo Quản lý tài liệu) */}
+                        <div className="flex items-center gap-1 pt-1 mt-0.5 border-t border-slate-800/80">
+                          <Building2 className="w-3 h-3 text-sky-400 shrink-0" />
+                          <select
+                            value={item.department || ''}
+                            onChange={(e) => handleUpdateDetailItem(item.id, 'department', e.target.value)}
+                            className={`w-full bg-slate-900 border rounded-lg px-2 py-1 text-[11px] font-medium focus:outline-none transition-colors cursor-pointer ${
+                              item.department
+                                ? 'border-sky-500/70 text-sky-200'
+                                : 'border-slate-700 hover:border-slate-500 text-slate-400'
+                            }`}
+                            title="Chọn phòng ban / bộ phận ban hành (đồng bộ danh sách từ Quản lý tài liệu)"
+                          >
+                            <option value="">-- Phòng ban --</option>
+                            {item.department && !activeDepartments.some(d => d.name === item.department) && (
+                              <option value={item.department}>{item.department}</option>
+                            )}
+                            {activeDepartments.map(dept => (
+                              <option key={dept.id} value={dept.name}>
+                                {dept.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -2567,6 +2622,8 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
                                     driveFileName: item.driveFileName,
                                     driveFileLink: item.driveFileLink,
                                     driveFilePath: item.driveFilePath,
+                                    docType: item.docType,
+                                    department: item.department,
                                     isStartDateSelected: idx === 0
                                   })),
                                   attachedSections: [
@@ -2641,12 +2698,12 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
                       <th colSpan={3} className="border border-slate-700 px-3 py-1.5 text-center bg-slate-850">Thời gian</th>
                       <th colSpan={2} className="border border-slate-700 px-3 py-1.5 text-center bg-slate-850">Số văn bản</th>
                       <th rowSpan={2} className="border border-slate-700 px-3 py-2 min-w-[150px] text-center">Lưu Drive</th>
-                      <th rowSpan={2} className="border border-slate-700 px-3 py-2 min-w-[170px] text-center bg-slate-850">
+                      <th rowSpan={2} className="border border-slate-700 px-3 py-2 min-w-[195px] text-center bg-slate-850">
                         <div className="flex items-center justify-center gap-1.5">
                           <FileText className="w-4 h-4 text-rose-400" />
-                          <span>Loại văn bản</span>
+                          <span>Loại văn bản / Phòng ban</span>
                         </div>
-                        <div className="text-[10px] text-emerald-400 font-normal">Tự chọn → Tự sang QL tài liệu</div>
+                        <div className="text-[10px] text-emerald-400 font-normal">Chọn loại VB hoặc phòng ban → Sang QLTL</div>
                       </th>
                     </tr>
                     <tr className="bg-slate-900/90 border-b border-slate-700 text-slate-300 font-semibold text-[11px] text-center">
@@ -2817,16 +2874,20 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
                             </select>
                             
                             {(() => {
-                              const activeType = item.docType;
-                              if (!activeType) {
+                              const activeType = item.docType?.trim() || '';
+                              const activeDept = item.department?.trim() || '';
+                              const isSyncedToQLTL = !!(activeType || activeDept);
+                              if (!isSyncedToQLTL) {
                                 return (
-                                  <div className="px-0.5 text-[10px] text-slate-500 italic truncate" title="Để trống: Tài liệu này không nhảy sang Quản lý tài liệu">
-                                    Chưa phân (Không sang QLTL)
+                                  <div className="px-0.5 text-[10px] text-slate-500 italic truncate" title="Để trống cả loại văn bản và phòng ban: Tài liệu này không nhảy sang Quản lý tài liệu">
+                                    Chưa khai báo (Không sang QLTL)
                                   </div>
                                 );
                               }
 
-                              const typeInfo = docTypes.find(t => t.id === activeType) || { code: 'VB', name: 'Văn bản', color: 'slate' };
+                              const typeInfo = activeType
+                                ? (docTypes.find(t => t.id === activeType) || { code: 'VB', name: 'Văn bản', color: 'slate' })
+                                : { code: 'PB', name: 'Phòng ban', color: 'blue' };
                               const colorStyle = getDocTypeColorStyle(typeInfo.color);
                               return (
                                 <div className="flex items-center justify-between gap-1 px-0.5">
@@ -2849,9 +2910,12 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
                                     )}
                                     <button
                                       type="button"
-                                      onClick={() => handleUpdateAttachedDoc(section.id, item.id, 'docType', '')}
+                                      onClick={() => {
+                                        handleUpdateAttachedDoc(section.id, item.id, 'docType', '');
+                                        handleUpdateAttachedDoc(section.id, item.id, 'department', '');
+                                      }}
                                       className="text-[10px] text-slate-400 hover:text-rose-400 p-0.5 cursor-pointer"
-                                      title="Bỏ phân loại (gỡ khỏi Quản lý tài liệu)"
+                                      title="Bỏ khai báo loại văn bản & phòng ban (gỡ khỏi Quản lý tài liệu)"
                                     >
                                       ✕
                                     </button>
@@ -2859,6 +2923,31 @@ export const ProjectDetailSheet: React.FC<ProjectDetailSheetProps> = ({
                                 </div>
                               );
                             })()}
+
+                            {/* Chọn Phòng ban / Bộ phận (đồng bộ theo Quản lý tài liệu) */}
+                            <div className="flex items-center gap-1 pt-1 mt-0.5 border-t border-slate-800/80">
+                              <Building2 className="w-3 h-3 text-sky-400 shrink-0" />
+                              <select
+                                value={item.department || ''}
+                                onChange={(e) => handleUpdateAttachedDoc(section.id, item.id, 'department', e.target.value)}
+                                className={`w-full bg-slate-900 border rounded-lg px-2 py-1 text-[11px] font-medium focus:outline-none transition-colors cursor-pointer ${
+                                  item.department
+                                    ? 'border-sky-500/70 text-sky-200'
+                                    : 'border-slate-700 hover:border-slate-500 text-slate-400'
+                                }`}
+                                title="Chọn phòng ban / bộ phận ban hành (đồng bộ danh sách từ Quản lý tài liệu)"
+                              >
+                                <option value="">-- Phòng ban --</option>
+                                {item.department && !activeDepartments.some(d => d.name === item.department) && (
+                                  <option value={item.department}>{item.department}</option>
+                                )}
+                                {activeDepartments.map(dept => (
+                                  <option key={dept.id} value={dept.name}>
+                                    {dept.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                         </td>
                       </tr>

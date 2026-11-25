@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Plus, 
@@ -8,12 +8,56 @@ import {
   RotateCcw, 
   Tag, 
   AlertCircle, 
-  FolderCheck,
   Palette,
-  Sparkles
+  Sparkles,
+  GripVertical,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { ManagedDocTypeInfo, ManagedDocument } from '../types';
 import { COLOR_OPTIONS, getDocTypeColorStyle } from '../utils/docTypeStyles';
+
+const OrderNumberInput: React.FC<{
+  index: number;
+  total: number;
+  onMoveTo: (targetOneBased: number) => void;
+}> = ({ index, total, onMoveTo }) => {
+  const [val, setVal] = useState(String(index + 1));
+
+  useEffect(() => {
+    setVal(String(index + 1));
+  }, [index]);
+
+  const commit = () => {
+    const parsed = parseInt(val, 10);
+    if (!isNaN(parsed) && parsed >= 1 && parsed !== index + 1) {
+      onMoveTo(Math.min(Math.max(parsed, 1), total));
+    } else {
+      setVal(String(index + 1));
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      min={1}
+      max={Math.max(total, 1)}
+      value={val}
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commit();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      onClick={(e) => e.stopPropagation()}
+      className="w-8 h-6 text-center font-mono text-xs font-bold bg-slate-900 hover:bg-slate-800 focus:bg-slate-900 border border-slate-700 hover:border-rose-400 focus:border-rose-400 rounded text-slate-200 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-text transition-colors shrink-0"
+      title="Nhập số thứ tự mới rồi nhấn Enter để di chuyển nhanh"
+    />
+  );
+};
 
 interface DocTypeManagementModalProps {
   isOpen: boolean;
@@ -24,6 +68,7 @@ interface DocTypeManagementModalProps {
   onUpdateDocType: (updatedType: ManagedDocTypeInfo) => void;
   onDeleteDocType: (typeId: string, reassignToId?: string) => void;
   onResetDocTypes: () => void;
+  onReorderDocTypes?: (reordered: ManagedDocTypeInfo[]) => void;
   onSelectDocType?: (typeId: string) => void;
 }
 
@@ -36,6 +81,7 @@ export const DocTypeManagementModal: React.FC<DocTypeManagementModalProps> = ({
   onUpdateDocType,
   onDeleteDocType,
   onResetDocTypes,
+  onReorderDocTypes,
   onSelectDocType
 }) => {
   // Mode: 'list' | 'add' | 'edit'
@@ -53,7 +99,21 @@ export const DocTypeManagementModal: React.FC<DocTypeManagementModalProps> = ({
   const [deletingType, setDeletingType] = useState<ManagedDocTypeInfo | null>(null);
   const [reassignTargetId, setReassignTargetId] = useState<string>('khac');
 
+  // Drag & Drop State
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
   if (!isOpen) return null;
+
+  const moveDocType = (fromIdx: number, toIdx: number) => {
+    if (!onReorderDocTypes) return;
+    const clampedTo = Math.max(0, Math.min(toIdx, docTypes.length - 1));
+    if (fromIdx === clampedTo || fromIdx < 0 || fromIdx >= docTypes.length) return;
+    const next = [...docTypes];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(clampedTo, 0, moved);
+    onReorderDocTypes(next);
+  };
 
   // Tính số lượng văn bản đang áp dụng từng loại
   const getDocCountForType = (typeId: string) => {
@@ -289,10 +349,17 @@ export const DocTypeManagementModal: React.FC<DocTypeManagementModalProps> = ({
           {/* View: LIST ALL TYPES */}
           {mode === 'list' && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-300">
-                  Danh sách loại văn bản đang áp dụng:
-                </span>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <span className="text-xs font-semibold text-slate-300 block">
+                    Danh sách loại văn bản đang áp dụng:
+                  </span>
+                  {onReorderDocTypes && (
+                    <span className="text-[11px] text-slate-500">
+                      Kéo thả, bấm mũi tên ↑↓ hoặc nhập số thứ tự để sắp xếp lại vị trí hiển thị
+                    </span>
+                  )}
+                </div>
                 
                 <div className="flex items-center gap-2">
                   <button
@@ -321,17 +388,63 @@ export const DocTypeManagementModal: React.FC<DocTypeManagementModalProps> = ({
                 {docTypes.map((type, idx) => {
                   const style = getDocTypeColorStyle(type.color);
                   const count = getDocCountForType(type.id);
+                  const isDragged = draggedIdx === idx;
+                  const isDragOver = dragOverIdx === idx && draggedIdx !== null && draggedIdx !== idx;
 
                   return (
                     <div 
                       key={type.id}
-                      className="px-3.5 py-2.5 flex items-center justify-between gap-3 hover:bg-slate-800/40 transition-colors"
+                      draggable={!!onReorderDocTypes}
+                      onDragStart={() => setDraggedIdx(idx)}
+                      onDragOver={(e) => {
+                        if (!onReorderDocTypes) return;
+                        e.preventDefault();
+                        if (dragOverIdx !== idx) setDragOverIdx(idx);
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverIdx === idx) setDragOverIdx(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (draggedIdx !== null && draggedIdx !== idx) {
+                          moveDocType(draggedIdx, idx);
+                        }
+                        setDraggedIdx(null);
+                        setDragOverIdx(null);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedIdx(null);
+                        setDragOverIdx(null);
+                      }}
+                      className={`px-3 py-2.5 flex items-center justify-between gap-2.5 transition-colors ${
+                        isDragged
+                          ? 'opacity-50 bg-slate-800/70'
+                          : isDragOver
+                          ? 'bg-rose-950/35 ring-1 ring-inset ring-rose-500/70'
+                          : 'hover:bg-slate-800/40'
+                      }`}
                     >
-                      {/* Left: STT + Badge + Name + Description */}
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="text-xs font-mono text-slate-500 w-5 text-center">
-                          {idx + 1}
-                        </span>
+                      {/* Left: Drag Handle + STT + Badge + Name + Description */}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {onReorderDocTypes ? (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className="text-slate-600 hover:text-slate-300 cursor-grab active:cursor-grabbing"
+                              title="Kéo để thay đổi thứ tự"
+                            >
+                              <GripVertical className="w-3.5 h-3.5" />
+                            </span>
+                            <OrderNumberInput
+                              index={idx}
+                              total={docTypes.length}
+                              onMoveTo={(targetOneBased) => moveDocType(idx, targetOneBased - 1)}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-xs font-mono text-slate-500 w-5 text-center shrink-0">
+                            {idx + 1}
+                          </span>
+                        )}
 
                         <span className={`px-2 py-0.5 rounded-md text-xs font-semibold border font-mono shrink-0 ${style.pillBg}`}>
                           {type.code}
@@ -343,21 +456,44 @@ export const DocTypeManagementModal: React.FC<DocTypeManagementModalProps> = ({
                               {type.name}
                             </span>
                             {type.isSystem && (
-                              <span className="text-[10px] text-slate-500 bg-slate-800/80 px-1.5 py-0.2 rounded font-sans">
+                              <span className="text-[10px] text-slate-500 bg-slate-800/80 px-1.5 py-0.2 rounded font-sans shrink-0">
                                 Hệ thống
                               </span>
                             )}
                           </div>
                           {type.description && (
-                            <p className="text-[11px] text-slate-400 truncate max-w-sm">
+                            <p className="text-[11px] text-slate-400 truncate max-w-xs sm:max-w-sm">
                               {type.description}
                             </p>
                           )}
                         </div>
                       </div>
 
-                      {/* Right: Count + Actions */}
-                      <div className="flex items-center gap-2 shrink-0">
+                      {/* Right: Reorder Arrows + Count + Actions */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {onReorderDocTypes && (
+                          <div className="flex items-center gap-0.5 bg-slate-900/90 border border-slate-800 rounded-lg p-0.5">
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => moveDocType(idx, idx - 1)}
+                              className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                              title="Đẩy lên trên"
+                            >
+                              <ArrowUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === docTypes.length - 1}
+                              onClick={() => moveDocType(idx, idx + 1)}
+                              className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                              title="Đẩy xuống dưới"
+                            >
+                              <ArrowDown className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+
                         {/* Count */}
                         <span 
                           className="text-xs px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-300 border border-slate-700/80"

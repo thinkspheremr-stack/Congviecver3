@@ -1,4 +1,4 @@
-import { TaskItem, CategoryInfo, Project, ManagedDocument, ManagedDocTypeInfo, DocumentAttachment } from '../types';
+import { TaskItem, CategoryInfo, Project, ManagedDocument, ManagedDocTypeInfo, ManagedDepartmentInfo, DocumentAttachment } from '../types';
 
 export const DEFAULT_CATEGORIES: CategoryInfo[] = [
   {
@@ -582,303 +582,37 @@ export function setMasterDrivePath(path: string): void {
   }
 }
 
-export const INITIAL_MANAGED_DOCUMENTS: ManagedDocument[] = [
-  {
-    id: 'doc-001',
-    docNumber: '42/TTr-BQLDA',
-    title: 'Tờ trình về việc Phê duyệt hồ sơ thiết kế bản vẽ thi công và dự toán Bến cảng số 3',
-    docType: 'to_trinh',
-    department: 'Ban Quản lý Dự án',
-    projectName: 'Bến cảng số 3 - Cảng Vũng Áng',
-    issueDay: '15',
-    issueMonth: '01',
-    issueYear: '2026',
-    issueDate: '2026-01-15',
-    signer: 'Trưởng ban QLDA',
-    storageLocation: 'Hộp lưu số 03 - Tủ A (BQLDA)',
-    note: 'Đã thông qua Hội đồng thẩm định kỹ thuật công ty',
-    status: 'effective',
-    driveFileName: '42_TTr_BQLDA_ThietKeBanVeThiCong_L2_DaSuaDoi.pdf',
-    driveFileLink: 'https://drive.google.com',
-    fileSize: 4520000,
-    uploadedAt: '2026-01-15T09:30:00Z',
-    attachments: [
-      {
-        id: 'att-001-1',
-        fileName: '42_TTr_BQLDA_ThietKeBanVe_DuThao_L1.pdf',
-        fileLink: 'https://drive.google.com',
-        fileSize: 4120000,
-        versionName: 'Lần 1 (Dự thảo)',
-        uploadedAt: '2026-01-10T14:00:00Z',
-        note: 'Bản dự thảo trình Hội đồng thẩm định lần đầu'
-      },
-      {
-        id: 'att-001-2',
-        fileName: '42_TTr_BQLDA_ThietKeBanVeThiCong_L2_DaSuaDoi.pdf',
-        fileLink: 'https://drive.google.com',
-        fileSize: 4520000,
-        versionName: 'Lần 2 (Chỉnh sửa theo góp ý)',
-        uploadedAt: '2026-01-14T16:30:00Z',
-        note: 'Đã bổ sung dự toán chi tiết và thuyết minh móng cọc bến',
-        isPrimary: true
-      },
-      {
-        id: 'att-001-3',
-        fileName: '42_TTr_BQLDA_BanChinhThuc_KyDuyet.pdf',
-        fileLink: 'https://drive.google.com',
-        fileSize: 4890000,
-        versionName: 'Bản ký duyệt đóng dấu',
-        uploadedAt: '2026-01-15T09:30:00Z',
-        note: 'Bản chính thức có chữ ký Trưởng ban QLDA'
-      }
-    ],
-    source: 'standalone'
-  },
-  {
-    id: 'doc-002',
-    docNumber: '88/QĐ-LV',
-    title: 'Quyết định Phê duyệt kế hoạch lựa chọn nhà thầu gói thầu xây lắp công trình thủy công',
-    docType: 'quyet_dinh',
-    department: 'Ban Giám đốc',
-    projectName: 'Bến cảng số 3 - Cảng Vũng Áng',
-    issueDay: '22',
-    issueMonth: '01',
-    issueYear: '2026',
-    issueDate: '2026-01-22',
-    signer: 'Tổng Giám đốc',
-    storageLocation: 'Hộp lưu số 01 - Tủ Ban Giám Đốc',
-    note: 'Căn cứ Nghị quyết HĐQT số 05/NQ-HĐQT',
-    status: 'effective',
-    driveFileName: '88_QD_LV_KeHoachLCNT_ChinhThuc.pdf',
-    driveFileLink: 'https://drive.google.com',
-    fileSize: 2840000,
-    uploadedAt: '2026-01-22T14:15:00Z',
-    attachments: [
-      {
-        id: 'att-002-1',
-        fileName: '88_QD_LV_DuThao_L1.docx',
-        fileLink: 'https://drive.google.com',
-        fileSize: 1250000,
-        versionName: 'Lần 1 (Dự thảo)',
-        uploadedAt: '2026-01-18T10:00:00Z',
-        note: 'Dự thảo ban đầu kèm phụ lục tiến độ lựa chọn nhà thầu'
-      },
-      {
-        id: 'att-002-2',
-        fileName: '88_QD_LV_KeHoachLCNT_ChinhThuc.pdf',
-        fileLink: 'https://drive.google.com',
-        fileSize: 2840000,
-        versionName: 'Quyết định chính thức',
-        uploadedAt: '2026-01-22T14:15:00Z',
-        note: 'Đã ban hành có dấu đỏ Ban Giám đốc',
-        isPrimary: true
-      }
-    ],
-    source: 'standalone'
-  },
-  {
-    id: 'doc-003',
-    docNumber: '18/TTr-KT',
-    title: 'Tờ trình về Đề xuất phương án cải tạo và nâng cấp hệ thống cẩu giàn bến số 1 và số 2',
-    docType: 'to_trinh',
-    department: 'Phòng Kỹ thuật - Vận hành',
-    projectName: 'Nâng cấp thiết bị bến cảng',
-    issueDay: '05',
-    issueMonth: '02',
-    issueYear: '2026',
-    issueDate: '2026-02-05',
-    signer: 'Trưởng phòng Kỹ thuật',
-    storageLocation: 'Hộp lưu số 06 - Kệ Kỹ thuật B2',
-    note: 'Đề xuất thay mới cáp cẩu và hệ thống điều khiển PLC',
-    status: 'effective',
-    driveFileName: '18_TTr_KT_NangCapCauGian.pdf',
-    driveFileLink: 'https://drive.google.com',
-    fileSize: 3120000,
-    uploadedAt: '2026-02-05T10:00:00Z',
-    attachments: [
-      {
-        id: 'att-003-1',
-        fileName: '18_TTr_KT_NangCapCauGian_DuThao_L1.pdf',
-        fileLink: 'https://drive.google.com',
-        fileSize: 2850000,
-        versionName: 'Lần 1 (Dự thảo)',
-        uploadedAt: '2026-02-01T09:00:00Z',
-        note: 'Đề xuất ban đầu của Phòng Kỹ thuật'
-      },
-      {
-        id: 'att-003-2',
-        fileName: '18_TTr_KT_NangCapCauGian_HieuChinh_L2.pdf',
-        fileLink: 'https://drive.google.com',
-        fileSize: 3120000,
-        versionName: 'Lần 2 (Sửa đổi & Dự toán)',
-        uploadedAt: '2026-02-05T10:00:00Z',
-        note: 'Bổ sung dự toán thay cáp cẩu và hệ thống PLC',
-        isPrimary: true
-      }
-    ],
-    source: 'standalone'
-  },
-  {
-    id: 'doc-004',
-    docNumber: '105/QĐ-LV',
-    title: 'Quyết định Thành lập Tổ chuyên gia đấu thầu gói thầu mua sắm trang thiết bị giám sát cảng biển',
-    docType: 'quyet_dinh',
-    department: 'Ban Giám đốc',
-    projectName: 'Hạ tầng số và Giám sát Cảng',
-    issueDay: '12',
-    issueMonth: '02',
-    issueYear: '2026',
-    issueDate: '2026-02-12',
-    signer: 'Phó Tổng Giám đốc',
-    storageLocation: 'Hộp lưu số 01 - Tủ Ban Giám Đốc',
-    note: 'Tổ trưởng: Phó TGĐ, Thư ký: Chuyên viên P.KH-KD',
-    status: 'effective',
-    driveFileName: '105_QD_LV_ToChuyenGiaDauThau.pdf',
-    driveFileLink: 'https://drive.google.com',
-    fileSize: 1980000,
-    uploadedAt: '2026-02-12T16:20:00Z',
-    attachments: [
-      {
-        id: 'att-004-1',
-        fileName: '105_QD_LV_DuThao_ToChuyenGia.docx',
-        fileLink: 'https://drive.google.com',
-        fileSize: 850000,
-        versionName: 'Lần 1 (Dự thảo)',
-        uploadedAt: '2026-02-08T11:00:00Z',
-        note: 'Bản xin ý kiến các thành viên tổ'
-      },
-      {
-        id: 'att-004-2',
-        fileName: '105_QD_LV_ToChuyenGiaDauThau.pdf',
-        fileLink: 'https://drive.google.com',
-        fileSize: 1980000,
-        versionName: 'Quyết định ban hành',
-        uploadedAt: '2026-02-12T16:20:00Z',
-        note: 'Đã ký và đóng dấu phát hành',
-        isPrimary: true
-      }
-    ],
-    source: 'standalone'
-  },
-  {
-    id: 'doc-005',
-    docNumber: '67/TTr-TCKT',
-    title: 'Tờ trình về việc Tạm ứng kinh phí giải phóng mặt bằng và di dời hạ tầng kỹ thuật đợt 1',
-    docType: 'to_trinh',
-    department: 'Phòng Kế toán - Tài chính',
-    projectName: 'Bến cảng số 3 - Cảng Vũng Áng',
-    issueDay: '20',
-    issueMonth: '02',
-    issueYear: '2026',
-    issueDate: '2026-02-20',
-    signer: 'Kế toán trưởng',
-    storageLocation: 'Hộp lưu số 08 - Tủ Tài chính Kế toán',
-    note: 'Kèm theo phụ lục bảng kê đối tượng bồi thường',
-    status: 'effective',
-    driveFileName: '67_TTr_TCKT_TamUngKinhPhiGPMB.pdf',
-    driveFileLink: 'https://drive.google.com',
-    fileSize: 5210000,
-    uploadedAt: '2026-02-20T11:45:00Z',
-    attachments: [
-      {
-        id: 'att-005-1',
-        fileName: '67_TTr_TCKT_TamUngKinhPhiGPMB.pdf',
-        fileLink: 'https://drive.google.com',
-        fileSize: 5210000,
-        versionName: 'Lần 1 (Bản gốc)',
-        uploadedAt: '2026-02-20T11:45:00Z',
-        note: 'Tờ trình chính thức đợt 1',
-        isPrimary: true
-      }
-    ],
-    source: 'standalone'
-  },
-  {
-    id: 'doc-006',
-    docNumber: '230/CV-LV',
-    title: 'Công văn gửi Cảng vụ Hàng hải Hà Tĩnh về việc Phối hợp kiểm tra hiện trường luồng hàng hải',
-    docType: 'cong_van',
-    department: 'Phòng Kế hoạch - Kinh doanh',
-    projectName: 'Bến cảng số 3 - Cảng Vũng Áng',
-    issueDay: '01',
-    issueMonth: '03',
-    issueYear: '2026',
-    issueDate: '2026-03-01',
-    signer: 'Phó Tổng Giám đốc',
-    storageLocation: 'Hộp lưu số 04 - Tủ Hành chính',
-    note: 'Cảng vụ đã tiếp nhận ngày 02/03/2026',
-    status: 'effective',
-    driveFileName: '230_CV_LV_KiemTraLuongHangHai.pdf',
-    driveFileLink: 'https://drive.google.com',
-    fileSize: 1650000,
-    uploadedAt: '2026-03-01T08:30:00Z',
-    attachments: [
-      {
-        id: 'att-006-1',
-        fileName: '230_CV_LV_KiemTraLuongHangHai.pdf',
-        fileLink: 'https://drive.google.com',
-        fileSize: 1650000,
-        versionName: 'Lần 1 (Chính thức)',
-        uploadedAt: '2026-03-01T08:30:00Z',
-        isPrimary: true
-      }
-    ],
-    source: 'standalone'
-  },
-  {
-    id: 'doc-007',
-    docNumber: '12/BBNT-2026',
-    title: 'Biên bản nghiệm thu hoàn thành công tác ép cọc thử và quan trắc độ lún bến số 3',
-    docType: 'bien_ban',
-    department: 'Đơn vị Tư vấn Giám sát',
-    projectName: 'Bến cảng số 3 - Cảng Vũng Áng',
-    issueDay: '18',
-    issueMonth: '03',
-    issueYear: '2026',
-    issueDate: '2026-03-18',
-    signer: 'Kỹ sư Tư vấn Trưởng',
-    storageLocation: 'Hộp lưu số 05 - Kệ Hồ sơ Nghiệm thu',
-    note: 'Đạt yêu cầu tải trọng thử nghiệm Pmax = 350 tấn',
-    status: 'effective',
-    driveFileName: '12_BBNT_2026_EpCocThu.pdf',
-    driveFileLink: 'https://drive.google.com',
-    fileSize: 6780000,
-    uploadedAt: '2026-03-18T17:00:00Z',
-    attachments: [
-      {
-        id: 'att-007-1',
-        fileName: '12_BBNT_2026_EpCocThu_SoBo.pdf',
-        fileLink: 'https://drive.google.com',
-        fileSize: 5800000,
-        versionName: 'Lần 1 (Số liệu sơ bộ)',
-        uploadedAt: '2026-03-15T15:00:00Z',
-        note: 'Biên bản đo đạc sơ bộ tại hiện trường'
-      },
-      {
-        id: 'att-007-2',
-        fileName: '12_BBNT_2026_EpCocThu_ChinhThuc.pdf',
-        fileLink: 'https://drive.google.com',
-        fileSize: 6780000,
-        versionName: 'Lần 2 (Nghiệm thu chính thức)',
-        uploadedAt: '2026-03-18T17:00:00Z',
-        note: 'Ký xác nhận TVGS và BQLDA',
-        isPrimary: true
-      }
-    ],
-    source: 'standalone'
-  }
-];
+const LEGACY_SAMPLE_MANAGED_DOC_IDS = new Set([
+  'doc-001',
+  'doc-002',
+  'doc-003',
+  'doc-004',
+  'doc-005',
+  'doc-006',
+  'doc-007'
+]);
+
+const SAMPLE_DOCS_CLEANED_KEY = 'pm_managed_docs_samples_cleaned_v1';
+
+// Mặc định Quản lý tài liệu không chứa tài liệu mẫu nào; chỉ hiển thị tài liệu người dùng thêm hoặc khai báo loại văn bản / phòng ban
+export const INITIAL_MANAGED_DOCUMENTS: ManagedDocument[] = [];
 
 export function loadSavedManagedDocuments(): ManagedDocument[] {
   try {
     const raw = localStorage.getItem('pm_managed_documents');
-    if (!raw) return INITIAL_MANAGED_DOCUMENTS;
+    if (!raw) return [];
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0) return INITIAL_MANAGED_DOCUMENTS;
+    if (!Array.isArray(parsed) || parsed.length === 0) return [];
 
-    // Tự động chuẩn hóa và di chuyển dữ liệu cũ sang định dạng đa tệp đính kèm / nhiều lần sửa đổi
-    return parsed.map((doc: ManagedDocument) => {
-      // Nếu đã có attachments thì đảm bảo mỗi attachment đều có ngày sửa uploadedAt
+    let docsToLoad: ManagedDocument[] = parsed;
+    if (!localStorage.getItem(SAMPLE_DOCS_CLEANED_KEY)) {
+      docsToLoad = parsed.filter((doc: ManagedDocument) => doc && !LEGACY_SAMPLE_MANAGED_DOC_IDS.has(doc.id));
+      localStorage.setItem('pm_managed_documents', JSON.stringify(docsToLoad));
+      localStorage.setItem(SAMPLE_DOCS_CLEANED_KEY, '1');
+    }
+
+    // Tự động chuẩn hóa dữ liệu cũ sang định dạng đa tệp đính kèm / nhiều lần sửa đổi
+    return docsToLoad.map((doc: ManagedDocument) => {
       if (doc.attachments && Array.isArray(doc.attachments) && doc.attachments.length > 0) {
         return {
           ...doc,
@@ -889,16 +623,6 @@ export function loadSavedManagedDocuments(): ManagedDocument[] {
         };
       }
 
-      // Kiểm tra xem có dữ liệu mẫu tương ứng trong INITIAL_MANAGED_DOCUMENTS không
-      const sample = INITIAL_MANAGED_DOCUMENTS.find(s => s.id === doc.id);
-      if (sample && sample.attachments && sample.attachments.length > 0) {
-        return {
-          ...doc,
-          attachments: sample.attachments
-        };
-      }
-
-      // Nếu có tệp đơn cũ (driveFileName/driveFileLink), tự động chuyển thành Lần 1 (Bản gốc)
       if (doc.driveFileName || doc.driveFileLink) {
         return {
           ...doc,
@@ -924,7 +648,7 @@ export function loadSavedManagedDocuments(): ManagedDocument[] {
     });
   } catch (e) {
     console.error('Lỗi đọc tài liệu quản lý từ localStorage:', e);
-    return INITIAL_MANAGED_DOCUMENTS;
+    return [];
   }
 }
 
@@ -1104,3 +828,100 @@ export function saveManagedDocTypes(types: ManagedDocTypeInfo[]): void {
 
 export const getStoredManagedDocTypes = loadSavedManagedDocTypes;
 export const setStoredManagedDocTypes = saveManagedDocTypes;
+
+// Danh mục phòng ban / bộ phận mặc định (đồng bộ giữa Quản lý tài liệu và Chi tiết dự án)
+export const DEFAULT_MANAGED_DEPARTMENTS: ManagedDepartmentInfo[] = [
+  {
+    id: 'dept-bgd',
+    code: 'BGĐ',
+    name: 'Ban Giám đốc',
+    description: 'Ban Tổng Giám đốc / Lãnh đạo công ty',
+    isSystem: true
+  },
+  {
+    id: 'dept-bqlda',
+    code: 'BQLDA',
+    name: 'Ban Quản lý Dự án',
+    description: 'Đơn vị quản lý, điều hành tiến độ và hồ sơ dự án',
+    isSystem: true
+  },
+  {
+    id: 'dept-ktvh',
+    code: 'KT-VH',
+    name: 'Phòng Kỹ thuật - Vận hành',
+    description: 'Quản lý kỹ thuật, thiết bị, cơ điện và vận hành cảng',
+    isSystem: true
+  },
+  {
+    id: 'dept-khkd',
+    code: 'KH-KD',
+    name: 'Phòng Kế hoạch - Kinh doanh',
+    description: 'Lập kế hoạch đầu tư, đấu thầu và kinh doanh khai thác',
+    isSystem: true
+  },
+  {
+    id: 'dept-kttc',
+    code: 'KT-TC',
+    name: 'Phòng Kế toán - Tài chính',
+    description: 'Quản lý tài chính, tạm ứng, thanh quyết toán công trình',
+    isSystem: true
+  },
+  {
+    id: 'dept-tchc',
+    code: 'TC-HC',
+    name: 'Phòng Tổ chức - Hành chính',
+    description: 'Nhân sự, văn thư lưu trữ, hành chính tổng hợp',
+    isSystem: true
+  },
+  {
+    id: 'dept-atmt',
+    code: 'AT-MT',
+    name: 'Ban An toàn - Môi trường',
+    description: 'An toàn lao động, PCCC, đánh giá tác động môi trường',
+    isSystem: true
+  },
+  {
+    id: 'dept-tvgs',
+    code: 'TVGS',
+    name: 'Đơn vị Tư vấn Giám sát',
+    description: 'Tư vấn giám sát thi công, kiểm định và nghiệm thu',
+    isSystem: true
+  },
+  {
+    id: 'dept-nttc',
+    code: 'NTTC',
+    name: 'Nhà thầu thi công',
+    description: 'Nhà thầu xây lắp, cung cấp thiết bị và thi công công trình',
+    isSystem: true
+  },
+  {
+    id: 'dept-cqnn',
+    code: 'CQNN',
+    name: 'Cảng vụ / Cơ quan nhà nước',
+    description: 'Cảng vụ Hàng hải, Sở ban ngành và cơ quan quản lý nhà nước',
+    isSystem: true
+  }
+];
+
+export function loadSavedManagedDepartments(): ManagedDepartmentInfo[] {
+  try {
+    const raw = localStorage.getItem('pm_managed_departments');
+    if (!raw) return DEFAULT_MANAGED_DEPARTMENTS;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_MANAGED_DEPARTMENTS;
+  } catch (e) {
+    console.error('Lỗi đọc danh mục phòng ban từ localStorage:', e);
+    return DEFAULT_MANAGED_DEPARTMENTS;
+  }
+}
+
+export function saveManagedDepartments(departments: ManagedDepartmentInfo[]): void {
+  try {
+    localStorage.setItem('pm_managed_departments', JSON.stringify(departments));
+  } catch (e) {
+    console.error('Lỗi lưu danh mục phòng ban vào localStorage:', e);
+  }
+}
+
+export const getStoredManagedDepartments = loadSavedManagedDepartments;
+export const setStoredManagedDepartments = saveManagedDepartments;

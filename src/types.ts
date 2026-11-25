@@ -41,6 +41,7 @@ export interface ProjectDetailItem {
   stt: number;
   content: string;            // Nội dung
   docType?: string;           // Loại văn bản (VD: quyet_dinh, hop_dong, giay_phep, to_trinh...)
+  department?: string;        // Phòng ban / Bộ phận ban hành (đồng bộ với Quản lý tài liệu)
   day?: string;               // Ngày
   month?: string;             // Tháng
   year?: string;              // Năm
@@ -58,6 +59,7 @@ export interface AttachedDocumentItem {
   stt: number;
   content: string;            // Nội dung
   docType?: string;           // Loại văn bản
+  department?: string;        // Phòng ban / Bộ phận ban hành (đồng bộ với Quản lý tài liệu)
   day?: string;               // Ngày
   month?: string;             // Tháng
   year?: string;              // Năm
@@ -191,6 +193,14 @@ export interface ManagedDocTypeInfo {
   color: string;            // Màu sắc chủ đạo ('amber' | 'rose' | 'blue' | 'emerald' | 'purple' | 'indigo' | 'orange' | 'teal' | 'yellow' | 'cyan' | 'slate' | 'pink')
   description?: string;     // Mô tả ngắn gọn về loại văn bản này
   isSystem?: boolean;       // Loại mặc định của hệ thống
+}
+
+export interface ManagedDepartmentInfo {
+  id: string;               // Mã định danh phòng ban (e.g. 'dept-bgd', 'dept-xxx')
+  name: string;             // Tên phòng ban / đơn vị (e.g. 'Ban Giám đốc', 'Ban Quản lý Dự án')
+  code?: string;            // Ký hiệu viết tắt (e.g. 'BGĐ', 'BQLDA')
+  description?: string;     // Mô tả ngắn gọn chức năng phòng ban
+  isSystem?: boolean;       // Phòng ban mặc định của hệ thống
 }
 
 export interface DocumentAttachment {

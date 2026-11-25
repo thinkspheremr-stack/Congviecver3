@@ -25,7 +25,8 @@ import {
   ProjectDetailItem,
   AttachedDocSection,
   ManagedDocument,
-  ManagedDocTypeInfo
+  ManagedDocTypeInfo,
+  ManagedDepartmentInfo
 } from './types';
 import { 
   INITIAL_PROJECTS, 
@@ -41,7 +42,10 @@ import {
   setStoredManagedDocuments,
   getStoredManagedDocTypes,
   setStoredManagedDocTypes,
-  DEFAULT_MANAGED_DOC_TYPES
+  DEFAULT_MANAGED_DOC_TYPES,
+  getStoredManagedDepartments,
+  setStoredManagedDepartments,
+  DEFAULT_MANAGED_DEPARTMENTS
 } from './services/taskStorage';
 import { 
   signInWithGoogleDrive, 
@@ -205,26 +209,109 @@ export const App: React.FC = () => {
     setStoredManagedDocTypes(DEFAULT_MANAGED_DOC_TYPES);
   };
 
-  // Tổng số lượng văn bản trên toàn hệ thống (hiển thị badge trên Navbar)
+  const handleReorderDocTypes = (reordered: ManagedDocTypeInfo[]) => {
+    setDocTypes(reordered);
+    setStoredManagedDocTypes(reordered);
+  };
+
+  // 6.2. Danh mục phòng ban / bộ phận (đồng bộ giữa Quản lý tài liệu & Chi tiết dự án)
+  const [departments, setDepartments] = useState<ManagedDepartmentInfo[]>(() => {
+    return getStoredManagedDepartments();
+  });
+
+  useEffect(() => {
+    setStoredManagedDepartments(departments);
+  }, [departments]);
+
+  const handleAddDepartment = (newDept: Omit<ManagedDepartmentInfo, 'id'>): string => {
+    const newId = `dept-${Date.now()}`;
+    const item: ManagedDepartmentInfo = { ...newDept, id: newId };
+    setDepartments(prev => {
+      const next = [...prev, item];
+      setStoredManagedDepartments(next);
+      return next;
+    });
+    return item.name;
+  };
+
+  const handleUpdateDepartment = (updated: ManagedDepartmentInfo, oldName: string) => {
+    setDepartments(prev => {
+      const next = prev.map(d => d.id === updated.id ? updated : d);
+      setStoredManagedDepartments(next);
+      return next;
+    });
+    if (oldName && oldName !== updated.name) {
+      setStandaloneDocs(prev => prev.map(d => d.department === oldName ? { ...d, department: updated.name } : d));
+      setProjects(prev => prev.map(proj => ({
+        ...proj,
+        detailItems: (proj.detailItems || []).map(it =>
+          it.department === oldName ? { ...it, department: updated.name } : it
+        ),
+        attachedSections: (proj.attachedSections || []).map(sec => ({
+          ...sec,
+          items: sec.items.map(it =>
+            it.department === oldName ? { ...it, department: updated.name } : it
+          )
+        }))
+      })));
+    }
+  };
+
+  const handleDeleteDepartment = (deptId: string, oldName: string, reassignToName?: string) => {
+    setDepartments(prev => {
+      const next = prev.filter(d => d.id !== deptId);
+      setStoredManagedDepartments(next);
+      return next;
+    });
+    if (oldName) {
+      const targetName = reassignToName || '';
+      setStandaloneDocs(prev => prev.map(d => d.department === oldName ? { ...d, department: targetName || 'Ban Quản lý Dự án' } : d));
+      setProjects(prev => prev.map(proj => ({
+        ...proj,
+        detailItems: (proj.detailItems || []).map(it =>
+          it.department === oldName ? { ...it, department: targetName } : it
+        ),
+        attachedSections: (proj.attachedSections || []).map(sec => ({
+          ...sec,
+          items: sec.items.map(it =>
+            it.department === oldName ? { ...it, department: targetName } : it
+          )
+        }))
+      })));
+    }
+  };
+
+  const handleResetDepartments = () => {
+    setDepartments(DEFAULT_MANAGED_DEPARTMENTS);
+    setStoredManagedDepartments(DEFAULT_MANAGED_DEPARTMENTS);
+  };
+
+  const handleReorderDepartments = (reordered: ManagedDepartmentInfo[]) => {
+    setDepartments(reordered);
+    setStoredManagedDepartments(reordered);
+  };
+
+  // Tổng số lượng văn bản hiển thị trong Quản lý tài liệu (chỉ tính văn bản tự thêm hoặc đã khai báo Loại văn bản / Phòng ban)
   const totalDocumentsCount = useMemo(() => {
     let count = standaloneDocs.length;
     projects.forEach(p => {
       if (p.detailItems) {
-        count += p.detailItems.filter(it => it.content || it.docNumber || it.driveFileName).length;
+        count += p.detailItems.filter(
+          it => (it.docType && it.docType.trim() !== '') || (it.department && it.department.trim() !== '')
+        ).length;
       }
       if (p.attachedSections) {
         p.attachedSections.forEach(sec => {
           if (sec.items) {
-            count += sec.items.filter(it => it.content || it.docNumber || it.driveFileName).length;
+            count += sec.items.filter(
+              it => (it.docType && it.docType.trim() !== '') || (it.department && it.department.trim() !== '')
+            ).length;
           }
         });
       }
     });
-    tasks.forEach(t => {
-      if (t.documents) count += t.documents.length;
-    });
     return count;
-  }, [standaloneDocs, projects, tasks]);
+  }, [standaloneDocs, projects]);
 
   const handleAddManagedDocument = (docData: Omit<ManagedDocument, 'id'>) => {
     const newDoc: ManagedDocument = {
@@ -257,6 +344,7 @@ export const App: React.FC = () => {
               ...it,
               content: updatedDoc.title !== undefined ? updatedDoc.title : it.content,
               docType: updatedDoc.docType !== undefined ? updatedDoc.docType : it.docType,
+              department: updatedDoc.department !== undefined ? updatedDoc.department : it.department,
               day: updatedDoc.issueDay !== undefined ? updatedDoc.issueDay : it.day,
               month: updatedDoc.issueMonth !== undefined ? updatedDoc.issueMonth : it.month,
               year: updatedDoc.issueYear !== undefined ? updatedDoc.issueYear : it.year,
@@ -293,6 +381,7 @@ export const App: React.FC = () => {
                 ...it,
                 content: updatedDoc.title !== undefined ? updatedDoc.title : it.content,
                 docType: updatedDoc.docType !== undefined ? updatedDoc.docType : it.docType,
+                department: updatedDoc.department !== undefined ? updatedDoc.department : it.department,
                 day: updatedDoc.issueDay !== undefined ? updatedDoc.issueDay : it.day,
                 month: updatedDoc.issueMonth !== undefined ? updatedDoc.issueMonth : it.month,
                 year: updatedDoc.issueYear !== undefined ? updatedDoc.issueYear : it.year,
@@ -316,12 +405,12 @@ export const App: React.FC = () => {
   };
 
   const handleDeleteManagedDocument = (docId: string) => {
-    // Nếu là tài liệu từ Chi tiết dự án, chỉ gỡ phân loại docType (về rỗng) để không còn hiển thị ở QLTL, giữ lại dòng trong dự án
+    // Nếu là tài liệu từ Chi tiết dự án, gỡ cả Loại văn bản & Phòng ban (về rỗng) để không còn hiển thị ở QLTL, giữ lại dòng trong dự án
     if (docId.startsWith('proj-det-')) {
       const rawItemId = docId.replace('proj-det-', '');
       setProjects(prev => prev.map(proj => ({
         ...proj,
-        detailItems: (proj.detailItems || []).map(it => it.id === rawItemId ? { ...it, docType: '' } : it)
+        detailItems: (proj.detailItems || []).map(it => it.id === rawItemId ? { ...it, docType: '', department: '' } : it)
       })));
     } else if (docId.startsWith('sec-doc-')) {
       const rawItemId = docId.replace('sec-doc-', '');
@@ -329,7 +418,7 @@ export const App: React.FC = () => {
         ...proj,
         attachedSections: (proj.attachedSections || []).map(sec => ({
           ...sec,
-          items: sec.items.map(it => it.id === rawItemId ? { ...it, docType: '' } : it)
+          items: sec.items.map(it => it.id === rawItemId ? { ...it, docType: '', department: '' } : it)
         }))
       })));
     }
@@ -381,6 +470,8 @@ export const App: React.FC = () => {
               driveFileName: item.driveFileName,
               driveFileLink: item.driveFileLink,
               driveFilePath: item.driveFilePath,
+              docType: item.docType,
+              department: item.department,
               isStartDateSelected: idx === 0
             }));
 
@@ -573,6 +664,8 @@ export const App: React.FC = () => {
                       driveFileName: it.driveFileName,
                       driveFileLink: it.driveFileLink,
                       driveFilePath: it.driveFilePath,
+                      docType: it.docType,
+                      department: it.department,
                       isStartDateSelected: idx === 0
                     })),
                     detailNote: sec.note !== undefined ? sec.note : p.detailNote,
@@ -618,7 +711,9 @@ export const App: React.FC = () => {
                       driveFileId: it.driveFileId,
                       driveFileName: it.driveFileName,
                       driveFileLink: it.driveFileLink,
-                      driveFilePath: it.driveFilePath
+                      driveFilePath: it.driveFilePath,
+                      docType: it.docType,
+                      department: it.department
                     }))
                   };
                 }
@@ -647,7 +742,9 @@ export const App: React.FC = () => {
                     driveFileId: it.driveFileId,
                     driveFileName: it.driveFileName,
                     driveFileLink: it.driveFileLink,
-                    driveFilePath: it.driveFilePath
+                    driveFilePath: it.driveFilePath,
+                    docType: it.docType,
+                    department: it.department
                   }))
                 };
                 return {
@@ -963,6 +1060,7 @@ export const App: React.FC = () => {
     activeProjectId?: string;
     standaloneDocs?: ManagedDocument[];
     documentTypes?: ManagedDocTypeInfo[];
+    departments?: ManagedDepartmentInfo[];
   }) => {
     setProjects(restored.projects);
     setTasks(restored.tasks);
@@ -972,6 +1070,10 @@ export const App: React.FC = () => {
     if (restored.documentTypes && Array.isArray(restored.documentTypes)) {
       setDocTypes(restored.documentTypes);
       setStoredManagedDocTypes(restored.documentTypes);
+    }
+    if (restored.departments && Array.isArray(restored.departments)) {
+      setDepartments(restored.departments);
+      setStoredManagedDepartments(restored.departments);
     }
     if (restored.masterDrivePath) setLocalMasterDrivePath(restored.masterDrivePath);
     if (restored.activeProjectId && restored.projects.some(p => p.id === restored.activeProjectId)) {
@@ -1051,6 +1153,8 @@ export const App: React.FC = () => {
             project={activeProject}
             allProjects={projects}
             standaloneDocs={standaloneDocs}
+            docTypes={docTypes}
+            departments={departments}
             onSelectProject={(id) => {
               setActiveProjectId(id);
               setCurrentView('project_details');
@@ -1149,6 +1253,7 @@ export const App: React.FC = () => {
             tasks={tasks}
             standaloneDocs={standaloneDocs}
             docTypes={docTypes}
+            departments={departments}
             initialProjectId={docBoardInitialProjectId}
             initialSearchTerm={docBoardInitialSearch}
             onAddDocument={handleAddManagedDocument}
@@ -1158,6 +1263,13 @@ export const App: React.FC = () => {
             onUpdateDocType={handleUpdateDocType}
             onDeleteDocType={handleDeleteDocType}
             onResetDocTypes={handleResetDocTypes}
+            onReorderDocTypes={handleReorderDocTypes}
+            onAddDepartment={handleAddDepartment}
+            onUpdateDepartment={handleUpdateDepartment}
+            onDeleteDepartment={handleDeleteDepartment}
+            onResetDepartments={handleResetDepartments}
+            onReorderDepartments={handleReorderDepartments}
+            onNavigateToProjectDetails={handleNavigateToProjectDetails}
             onOpenScanModal={() => {
               setScanTargetTaskId(undefined);
               setIsScanModalOpen(true);
@@ -1259,6 +1371,7 @@ export const App: React.FC = () => {
         companyName={companyName}
         standaloneDocs={standaloneDocs}
         documentTypes={docTypes}
+        departments={departments}
         isDriveConnected={!!driveToken}
         driveToken={driveToken}
         driveRootFolderId={driveRootFolderId}

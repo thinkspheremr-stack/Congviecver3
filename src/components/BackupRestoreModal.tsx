@@ -19,7 +19,7 @@ import {
   parseBackupFile 
 } from '../utils/backupRestore';
 import { uploadDocumentToDrive } from '../services/driveService';
-import { ManagedDocument, ManagedDocTypeInfo } from '../types';
+import { ManagedDocument, ManagedDocTypeInfo, ManagedDepartmentInfo } from '../types';
 
 interface BackupRestoreModalProps {
   isOpen: boolean;
@@ -32,6 +32,7 @@ interface BackupRestoreModalProps {
   companyName: string;
   standaloneDocs?: ManagedDocument[];
   documentTypes?: ManagedDocTypeInfo[];
+  departments?: ManagedDepartmentInfo[];
   isDriveConnected?: boolean;
   driveToken?: string | null;
   driveRootFolderId?: string | null;
@@ -42,6 +43,7 @@ interface BackupRestoreModalProps {
     activeProjectId?: string;
     standaloneDocs?: ManagedDocument[];
     documentTypes?: ManagedDocTypeInfo[];
+    departments?: ManagedDepartmentInfo[];
   }) => void;
 }
 
@@ -56,6 +58,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
   companyName,
   standaloneDocs,
   documentTypes,
+  departments,
   isDriveConnected,
   driveToken,
   driveRootFolderId,
@@ -88,7 +91,8 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
         activeProjectId,
         companyName,
         standaloneDocs,
-        documentTypes
+        documentTypes,
+        departments
       );
       downloadBackupFile(payload);
       setLastBackupTime(payload.backupTimeFormatted);
@@ -118,7 +122,8 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
         activeProjectId,
         companyName,
         standaloneDocs,
-        documentTypes
+        documentTypes,
+        departments
       );
       const jsonStr = JSON.stringify(payload, null, 2);
       const now = new Date();
@@ -200,7 +205,8 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
         masterDrivePath: previewPayload.masterDrivePath,
         activeProjectId: previewPayload.activeProjectId || finalProjects[0]?.id,
         standaloneDocs: previewPayload.standaloneDocs,
-        documentTypes: previewPayload.documentTypes
+        documentTypes: previewPayload.documentTypes,
+        departments: previewPayload.departments
       });
 
       alert(`Khôi phục thành công toàn bộ từ bản sao lưu ngày ${previewPayload.backupTimeFormatted}! Đã nạp ${finalProjects.length} dự án.`);
